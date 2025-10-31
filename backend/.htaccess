@@ -1,0 +1,11 @@
+# PHP Settings für File Uploads und große Requests
+<IfModule mod_php.c>
+    php_value upload_max_filesize 10M
+    php_value post_max_size 12M
+    php_value memory_limit 256M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+</IfModule>
+
+# Alternative für PHP-FPM (falls mod_php nicht verfügbar)
+# Diese Werte in .user.ini im Backend-Ordner setzen

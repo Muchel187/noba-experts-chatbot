@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOBA KI-Berater</title>
+    <style>
+        /* Chat-Button unten rechts */
+        #noba-chat-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #FF7B29, #e66b24);
+            border-radius: 50%;
+            border: none;
+            box-shadow: 0 4px 12px rgba(255, 123, 41, 0.4);
+            cursor: pointer;
+            z-index: 9998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        #noba-chat-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(255, 123, 41, 0.6);
+        }
+
+        #noba-chat-button svg {
+            width: 32px;
+            height: 32px;
+            fill: white;
+        }
+
+        /* Vollbild-Modal für den Chat */
+        #noba-chat-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        #noba-chat-modal.open {
+            display: flex;
+            opacity: 1;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #noba-chat-container {
+            width: 90%;
+            max-width: 1000px;
+            height: 85vh;
+            max-height: 800px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transform: scale(0.9);
+            transition: transform 0.3s;
+        }
+
+        #noba-chat-modal.open #noba-chat-container {
+            transform: scale(1);
+        }
+
+        /* Header mit Close Button */
+        #noba-chat-header {
+            background: linear-gradient(135deg, #FF7B29, #e66b24);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #noba-chat-header h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        #noba-chat-close {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        #noba-chat-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* iframe für Chat-App */
+        #noba-chat-iframe {
+            flex: 1;
+            border: none;
+            width: 100%;
+        }
+
+        /* Mobile Optimierung */
+        @media (max-width: 768px) {
+            #noba-chat-container {
+                width: 100%;
+                height: 100%;
+                max-height: 100%;
+                border-radius: 0;
+            }
+
+            #noba-chat-button {
+                width: 56px;
+                height: 56px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Floating Chat Button -->
+    <button id="noba-chat-button" aria-label="KI-Berater öffnen">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+            <circle cx="9" cy="10" r="1.5"/>
+            <circle cx="15" cy="10" r="1.5"/>
+        </svg>
+    </button>
+
+    <!-- Vollbild Chat Modal -->
+    <div id="noba-chat-modal">
+        <div id="noba-chat-container">
+            <div id="noba-chat-header">
+                <h3>🤖 NOBA KI-Berater</h3>
+                <button id="noba-chat-close" aria-label="Chat schließen">✕</button>
+            </div>
+            <iframe
+                id="noba-chat-iframe"
+                src="https://chatbot.noba-experts.de/"
+                title="NOBA KI-Berater"
+                allow="microphone"
+            ></iframe>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            const button = document.getElementById('noba-chat-button');
+            const modal = document.getElementById('noba-chat-modal');
+            const closeBtn = document.getElementById('noba-chat-close');
+            const iframe = document.getElementById('noba-chat-iframe');
+
+            // Chat öffnen
+            button.addEventListener('click', function() {
+                modal.classList.add('open');
+                // Button ausblenden wenn Chat offen
+                button.style.display = 'none';
+            });
+
+            // Chat schließen
+            closeBtn.addEventListener('click', function() {
+                modal.classList.remove('open');
+                button.style.display = 'flex';
+            });
+
+            // Chat schließen bei Klick außerhalb
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.classList.remove('open');
+                    button.style.display = 'flex';
+                }
+            });
+
+            // ESC-Taste zum Schließen
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && modal.classList.contains('open')) {
+                    modal.classList.remove('open');
+                    button.style.display = 'flex';
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

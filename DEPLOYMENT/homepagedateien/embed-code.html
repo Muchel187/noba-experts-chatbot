@@ -1,0 +1,144 @@
+<!--
+    NOBA KI-Berater Embedding Code
+
+    Füge diesen Code VOR dem schließenden </body> Tag
+    deiner Homepage (www.noba-experts.de) ein:
+-->
+
+<!-- Chat-Button unten rechts -->
+<button id="noba-chat-button" aria-label="KI-Berater öffnen" style="
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #FF7B29, #e66b24);
+    border-radius: 50%;
+    border: none;
+    box-shadow: 0 4px 12px rgba(255, 123, 41, 0.4);
+    cursor: pointer;
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s;
+">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="width: 32px; height: 32px; fill: white;">
+        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+        <circle cx="9" cy="10" r="1.5"/>
+        <circle cx="15" cy="10" r="1.5"/>
+    </svg>
+</button>
+
+<!-- Chat Modal (Vollbild) -->
+<div id="noba-chat-modal" style="
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+">
+    <div id="noba-chat-container" style="
+        width: 90%;
+        max-width: 1000px;
+        height: 85vh;
+        max-height: 800px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    ">
+        <div id="noba-chat-header" style="
+            background: linear-gradient(135deg, #FF7B29, #e66b24);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        ">
+            <h3 style="margin: 0; font-size: 18px; font-weight: 600;">🤖 NOBA KI-Berater</h3>
+            <button id="noba-chat-close" aria-label="Chat schließen" style="
+                background: rgba(255, 255, 255, 0.2);
+                border: none;
+                color: white;
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+            ">✕</button>
+        </div>
+        <iframe
+            id="noba-chat-iframe"
+            src="https://chatbot.noba-experts.de/"
+            title="NOBA KI-Berater"
+            allow="microphone"
+            style="flex: 1; border: none; width: 100%;"
+        ></iframe>
+    </div>
+</div>
+
+<script>
+(function() {
+    var button = document.getElementById('noba-chat-button');
+    var modal = document.getElementById('noba-chat-modal');
+    var closeBtn = document.getElementById('noba-chat-close');
+
+    // Chat öffnen
+    button.onclick = function() {
+        modal.style.display = 'flex';
+        button.style.display = 'none';
+    };
+
+    // Chat schließen
+    closeBtn.onclick = function() {
+        modal.style.display = 'none';
+        button.style.display = 'flex';
+    };
+
+    // Außerhalb klicken zum Schließen
+    modal.onclick = function(e) {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+            button.style.display = 'flex';
+        }
+    };
+
+    // ESC-Taste
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && modal.style.display === 'flex') {
+            modal.style.display = 'none';
+            button.style.display = 'flex';
+        }
+    });
+})();
+</script>
+
+<!--
+    Mobile Styles (optional in <head> einfügen):
+
+    <style>
+        @media (max-width: 768px) {
+            #noba-chat-container {
+                width: 100% !important;
+                height: 100% !important;
+                max-height: 100% !important;
+                border-radius: 0 !important;
+            }
+            #noba-chat-button {
+                width: 56px !important;
+                height: 56px !important;
+            }
+        }
+    </style>
+-->
