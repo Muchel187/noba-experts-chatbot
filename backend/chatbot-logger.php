@@ -5,6 +5,9 @@
  * AUCH OHNE Formular-Submission!
  */
 
+// Memory-Limit erhöhen für große JSON-Dateien
+ini_set('memory_limit', '256M');
+
 // Zeitzone für Deutschland setzen
 date_default_timezone_set('Europe/Berlin');
 
@@ -25,9 +28,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         die(json_encode(['error' => 'Invalid input']));
     }
 
-    // Session-ID für Tracking
-    session_start();
-    $session_id = session_id();
+    // Session-ID für Tracking - verwende Frontend Session-ID falls vorhanden
+    $session_id = $input['session_id'] ?? '';
+
+    // Fallback: PHP Session-ID nur wenn keine vom Frontend gesendet wurde
+    if (empty($session_id)) {
+        session_start();
+        $session_id = session_id();
+    }
 
     // DSGVO: IP-Adresse anonymisieren (nur erste 3 Oktette)
     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
@@ -52,7 +60,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Bestehende Logs laden
     $conversations = [];
     if (file_exists($log_file)) {
-        $conversations = json_decode(file_get_contents($log_file), true) ?? [];
+        $file_content = file_get_contents($log_file);
+        $decoded = json_decode($file_content, true);
+
+        // KRITISCH: Prüfe ob json_decode erfolgreich war
+        if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
+            error_log('❌ JSON DECODE FAILED: ' . json_last_error_msg() . ' - File size: ' . strlen($file_content) . ' bytes');
+            // NICHT überschreiben! Stattdessen Notfall-Backup erstellen
+            $emergency_backup = dirname($log_file) . '/chatbot-conversations.emergency.' . date('Ymd_His') . '.json';
+            copy($log_file, $emergency_backup);
+            error_log('🚨 Emergency backup created: ' . $emergency_backup);
+            // Versuche die Datei trotzdem zu behalten - lade NUR neue Session
+            $conversations = [];
+        } else {
+            $conversations = $decoded;
+            error_log('✅ Loaded ' . count($conversations) . ' existing conversations');
+        }
     }
 
     // DSGVO: Automatisch alte Konversationen löschen (älter als 30 Tage)
@@ -244,12 +267,20 @@ function extractLeadData($messages) {
         elseif (preg_match('/(projekt|auftrag|team erweitern|verstärkung|vakanz|offene stelle|besetzt werden)/i', $text)) {
             $data['lead_type'] = 'employer';
         }
+        // SEHR WICHTIG: Direkte Intent-Erkennung aus Quick Replies / Start-Buttons
+        elseif (preg_match('/(mitarbeiter finden|personal finden|entwickler finden|stellenbeschreibung|stelle ausschreiben)/i', $text)) {
+            $data['lead_type'] = 'employer';
+        }
         // Zusätzlich: Wenn jemand "für mein Unternehmen" oder "für unsere Firma" sagt
         elseif (preg_match('/(für mein|für unser|für die).*(unternehmen|firma|projekt|team)/i', $text)) {
             $data['lead_type'] = 'employer';
         }
         // KANDIDAT Keywords
         elseif (preg_match('/(suche|interesse|bewerbe|interessiere|möchte).*(job|stelle|position|arbeit|anstellung|karriere)/i', $text)) {
+            $data['lead_type'] = 'candidate';
+        }
+        // SEHR WICHTIG: Direkte Intent-Erkennung aus Quick Replies / Start-Buttons
+        elseif (preg_match('/(job suchen|stelle suchen|arbeit suchen|karriere machen|bewerben möchte|neuen job)/i', $text)) {
             $data['lead_type'] = 'candidate';
         }
         // Zusätzliche Kandidat-Patterns

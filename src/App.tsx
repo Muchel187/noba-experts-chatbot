@@ -505,6 +505,35 @@ export const App = () => {
       return;
     }
 
+    // Rückruf anfordern → Prüfe ob Telefonnummer vorhanden
+    if (option.includes('Rückruf')) {
+      const hasPhone = leadProfile.phone || chatMessages.some(m =>
+        m.role === AuthorRole.USER && /(\+49|0)\d{9,}/.test(m.text)
+      );
+
+      setChatMessages((prev: ChatMessage[]) => {
+        const userSelection: ChatMessage = {
+          id: `user-${crypto.randomUUID?.() ?? Date.now().toString(36)}`,
+          role: AuthorRole.USER,
+          text: option,
+          timestamp: new Date().toISOString(),
+        };
+
+        const botResponse: ChatMessage = hasPhone
+          ? createBotMessage(
+              'Vielen Dank! Ich habe Ihre Anfrage notiert und unser Team wird sich zeitnah telefonisch mit Ihnen in Verbindung setzen, um die nächsten Schritte zu besprechen. Sie können mit einem Rückruf unter der Ihnen bekannten Nummer rechnen.'
+            )
+          : createBotMessage(
+              'Gerne organisiere ich einen Rückruf für Sie! Bitte teilen Sie mir Ihre Telefonnummer mit, damit unser Team Sie kontaktieren kann.'
+            );
+
+        const next = [...prev, userSelection, botResponse];
+        conversationRef.current = next;
+        return next;
+      });
+      return;
+    }
+
     // CV hochladen (für Job-Matching) → Upload-Dialog öffnen
     if (option.includes('CV hochladen')) {
       setUploadDocumentType('cv_matching');

@@ -9,7 +9,7 @@ export const APP_CONFIG = {
     meetingUrl: 'https://meetings-eu1.hubspot.com/jurak/kichat',
   },
   endpoints: {
-    backendBaseUrl: (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) ?? '',
+    backendBaseUrl: 'https://chatbot.noba-experts.de',
     chat: '/chatbot-api.php',
     upload: '/upload-document.php',
     emailSummary: '/send-summary.php',

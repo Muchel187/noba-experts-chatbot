@@ -175,6 +175,97 @@ function fetchHomepageContent() {
     return $text;
 }
 
+// ===== AKTUELLE STELLENANGEBOTE FETCHEN =====
+function fetchCurrentJobs() {
+    static $cache = null;
+    static $cache_time = 0;
+
+    // Cache für 1 Stunde (3600 Sekunden)
+    if ($cache !== null && (time() - $cache_time) < 3600) {
+        return $cache;
+    }
+
+    try {
+        $url = 'https://www.noba-experts.de/#jobs';
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Falls SSL-Probleme
+        $html = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($http_code !== 200 || !$html) {
+            error_log('⚠️ Konnte Stellenangebote nicht laden: HTTP ' . $http_code);
+            return null;
+        }
+
+        // Extrahiere Job-Karten (vereinfachtes Pattern für typische Job-Listings)
+        $jobs = [];
+
+        // Pattern 1: Versuche <h3> oder <h2> Tags mit Job-Titeln zu finden
+        if (preg_match_all('/<h[23][^>]*class="[^"]*job[^"]*"[^>]*>(.*?)<\/h[23]>/is', $html, $matches)) {
+            foreach ($matches[1] as $title) {
+                $jobs[] = ['title' => strip_tags(trim($title))];
+            }
+        }
+
+        // Pattern 2: Falls kein spezifisches Pattern, versuche allgemeine Struktur
+        if (empty($jobs)) {
+            // Extrahiere alle <article> oder <div class="job"> Elemente
+            if (preg_match_all('/<(?:article|div)[^>]*(?:class="[^"]*(?:job|position|vacancy)[^"]*")[^>]*>(.*?)<\/(?:article|div)>/is', $html, $matches)) {
+                foreach ($matches[1] as $job_html) {
+                    // Extrahiere ersten h2/h3 Tag als Titel
+                    if (preg_match('/<h[23][^>]*>(.*?)<\/h[23]>/is', $job_html, $title_match)) {
+                        $title = strip_tags(trim($title_match[1]));
+                        // Extrahiere zusätzliche Infos (Ort, Typ)
+                        $details = '';
+                        if (preg_match('/<p[^>]*>(.*?)<\/p>/is', $job_html, $details_match)) {
+                            $details = strip_tags(trim($details_match[1]));
+                        }
+
+                        $jobs[] = [
+                            'title' => $title,
+                            'details' => $details
+                        ];
+                    }
+                }
+            }
+        }
+
+        // Fallback: Wenn keine Jobs gefunden, verwende bekannte Positionen
+        if (empty($jobs)) {
+            error_log('⚠️ Keine Jobs via HTML-Parsing gefunden, verwende Fallback');
+            $jobs = [
+                ['title' => 'General Manager Europe', 'details' => 'Remote / Europa, Vollzeit'],
+                ['title' => 'Vertriebsmitarbeiter im Außendienst', 'details' => 'Kreis Düsseldorf, Vollzeit'],
+                ['title' => 'Software-Ingenieur Embedded Systems', 'details' => 'Neuss, Vollzeit'],
+                ['title' => 'Technischer Einkäufer', 'details' => 'Aachen, Vollzeit']
+            ];
+        }
+
+        // Limitiere auf erste 5 Jobs
+        $jobs = array_slice($jobs, 0, 5);
+
+        $cache = $jobs;
+        $cache_time = time();
+
+        error_log('✅ Stellenangebote geladen: ' . count($jobs) . ' Jobs');
+        return $jobs;
+
+    } catch (Exception $e) {
+        error_log('⚠️ Fehler beim Fetchen der Stellenangebote: ' . $e->getMessage());
+        // Fallback
+        return [
+            ['title' => 'General Manager Europe', 'details' => 'Remote / Europa, Vollzeit'],
+            ['title' => 'Vertriebsmitarbeiter im Außendienst', 'details' => 'Kreis Düsseldorf, Vollzeit'],
+            ['title' => 'Software-Ingenieur Embedded Systems', 'details' => 'Neuss, Vollzeit'],
+            ['title' => 'Technischer Einkäufer', 'details' => 'Aachen, Vollzeit']
+        ];
+    }
+}
+
 function getRelevantContext($message) {
     $lower = strtolower($message);
 
@@ -274,7 +365,7 @@ Ansatz:
 Zusammenstellung optimal aufeinander abgestimmter Teams mit KI-Unterstützung
 
 Vorteile:
-• 90% bessere Teampassung durch Persönlichkeitsanalyse
+• Signifikant bessere Teampassung durch Persönlichkeitsanalyse
 • Vorhersage von Team-Dynamiken
 • Ergänzende Skill-Sets und Arbeitsstile
 • Reduzierung von Konflikten
@@ -302,13 +393,13 @@ Bereiche:
 
 Prozess: KI-gestütztes Active Sourcing + etabliertes Netzwerk = Schnelle Ergebnisse",
 
-        'KANDIDATEN_DETAIL' => "🎯 FÜR KANDIDATEN (100% KOSTENFREI):
+        'KANDIDATEN_DETAIL' => "🎯 FÜR KANDIDATEN (KOSTENFREI):
 
 Services:
 • Karriereberatung mit wissenschaftlich fundiertem Test
 • KI Karrierecoach: Persönlichkeitsanalyse + passende Karrierewege
 • Kostenloser Persönlichkeitstest (10-15 Min, Big Five-Modell)
-• Exklusiver Jobzugang (70% verdeckter Stellenmarkt)
+• Zugang zum verdeckten Stellenmarkt (viele Top-Positionen sind nicht öffentlich ausgeschrieben)
 • CV-Optimierung & Interview-Coaching
 
 Prozess:
@@ -805,6 +896,11 @@ Erkenne User-Typ PRÄZISE & qualifiziere:
 - 'Gerne sende ich Ihnen weitere Infos zu. Wie darf ich Sie erreichen?'
 - Natürlich in Gesprächsfluss einbauen, NICHT aggressiv!
 
+**NACH Erhalt der Kontaktdaten - WICHTIGER ABSCHLUSS:**
+- **NIEMALS** sagen: 'Wir werden nun mit der Suche beginnen' oder 'Wir starten jetzt'
+- **STATTDESSEN** kommunizieren: 'Vielen Dank! Ich habe alle wichtigen Informationen notiert. Unser Team wird sich in Kürze persönlich telefonisch bei Ihnen melden, um die nächsten Schritte zu besprechen und den Suchprozess gemeinsam zu planen.'
+- Betone: **Persönlicher Kontakt VOR Suchstart**
+
 **Bei KANDIDATEN** (nach 3-4 Nachrichten, optional):
 - 'Für eine persönliche Karriereberatung benötige ich Ihre E-Mail. Einverstanden?'
 
@@ -842,11 +938,13 @@ WICHTIG: Nutze genau diese Struktur mit Emojis und Bulletpoints!
 - Qualifizierung: Mit Rückfrage enden
 - Formell (Sie), professionell, beratend
 - Bei [CONTEXT-INFO]: Nutze die Infos für detaillierte Antwort!
-- **WICHTIG: Keine konkreten Prozentzahlen nennen** - verwende stattdessen vage Formulierungen wie 'deutlich', 'signifikant', 'erheblich'
+- **WICHTIG: NIEMALS konkrete Prozentzahlen oder Statistiken nennen** (z.B. NICHT '70% des Stellenmarkts', '90% Erfolgsquote', etc.)
+- Stattdessen nutze **vage, professionelle Formulierungen**: 'viele', 'die meisten', 'ein Großteil', 'erheblich', 'signifikant', 'deutlich'
+- **Vermeide übertriebene Claims** - bleibe seriös und zurückhaltend
 
 ## LEISTUNGEN
 **Unternehmen:** Executive Search, Projektbesetzung (2-4 Wochen), Team Building, TalentIntelligence Hub (KI-Matching, hohe Kulturpassung)
-**Kandidaten (kostenfrei):** Karriereberatung, Zugang zum verdeckten Stellenmarkt, KI-Coach (test.noba-experts.de)
+**Kandidaten (kostenfrei):** Karriereberatung, Zugang zum verdeckten Stellenmarkt (viele Top-Positionen nicht öffentlich), KI-Coach (test.noba-experts.de)
 **Bereiche:** IT (Cloud, DevOps, Software), Engineering (Automotive, Embedded)
 
 ## KONTAKT (nach Qualifizierung)
@@ -861,13 +959,16 @@ Bot: \"Gerne unterstütze ich Sie! Für welche Position suchen Sie und welche Te
 User: \"DevOps Engineer gesucht\"
 Bot: \"Welche Cloud-Plattform nutzen Sie und wie groß ist Ihr Team?\"
 
+User: \"Frau Huiso, dasoldal@exacde.de\"
+Bot: \"Vielen Dank, Frau Huiso! Ich habe alle wichtigen Informationen notiert. Unser Team wird sich in Kürze persönlich telefonisch bei Ihnen melden, um die nächsten Schritte zu besprechen und den Suchprozess gemeinsam mit Ihnen zu planen. Haben Sie in der Zwischenzeit noch Fragen?\"
+
 ## BEISPIELE - KANDIDAT
 User: \"Ich suche einen Job\"
 Bot: \"Gerne helfe ich Ihnen! In welchem Bereich suchen Sie (IT oder Engineering) und welche Rolle interessiert Sie?\"
 
 ## BEISPIELE - INFO
 User: \"Welche Leistungen?\"
-Bot: \"Wir bieten: Executive Search, Projektbesetzung (2-4 Wochen), Team Building und TalentIntelligence Hub mit 90% Kulturfit. Für Kandidaten kostenfrei: Karriereberatung, verdeckter Stellenmarkt, KI-Coach. Interessiert Sie ein Bereich?\"
+Bot: \"Wir bieten: Executive Search, Projektbesetzung (2-4 Wochen), Team Building und TalentIntelligence Hub mit hoher Kulturpassung. Für Kandidaten kostenfrei: Karriereberatung, Zugang zum verdeckten Stellenmarkt, KI-Coach. Interessiert Sie ein Bereich?\"
 
 Ziel: Leads generieren durch strukturierte Gespräche.";
 
@@ -1000,7 +1101,31 @@ try {
     $context_type = getRelevantContext($user_message);
     $enriched_message = $user_message;
 
-    if ($context_type) {
+    // SPEZIALBEHANDLUNG: Aktuelle Stellenangebote
+    if (stripos($user_message, 'Aktuelle Stellenangebote') !== false ||
+        stripos($user_message, 'Aktuelle Stellen') !== false ||
+        stripos($user_message, '💼 Aktuelle Stellenangebote') !== false ||
+        stripos($user_message, '💼 Aktuelle Stellen') !== false) {
+
+        $jobs = fetchCurrentJobs();
+        if ($jobs && count($jobs) > 0) {
+            $jobs_text = "AKTUELLE STELLENANGEBOTE (Auszug):\n\n";
+            foreach ($jobs as $idx => $job) {
+                $jobs_text .= "🔹 " . $job['title'];
+                if (!empty($job['details'])) {
+                    $jobs_text .= "\n   📍 " . $job['details'];
+                }
+                $jobs_text .= "\n\n";
+            }
+            $jobs_text .= "⚠️ WICHTIG: Dies ist nur ein Auszug unserer aktuellen Vakanzen. Wir haben viele weitere Positionen, die nicht öffentlich ausgeschrieben sind.";
+
+            // Injiziere Jobs als Context
+            $enriched_message = "[CONTEXT-INFO: Der User möchte aktuelle Stellenangebote sehen. Präsentiere folgende Jobs freundlich und professionell:\n\n" . $jobs_text . "\n\nERWARTET: Präsentiere die Jobs übersichtlich, betone dass dies nur ein Auszug ist, und frage welche Position interessiert oder ob der User mehr erfahren möchte.]\n\nUser-Frage: " . $user_message;
+            error_log('✨ Stellenangebote injiziert: ' . count($jobs) . ' Jobs');
+        }
+    }
+    // Normale Context-Injektion
+    elseif ($context_type) {
         $context_info = buildContextInfo($context_type);
         if ($context_info) {
             // Injiziere Context VOR die User-Nachricht

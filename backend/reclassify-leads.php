@@ -8,10 +8,10 @@ echo "🔄 NOBA Lead Re-Klassifizierung\n";
 echo "================================\n\n";
 
 // Konversationen laden
-$conversationsFile = __DIR__ . '/chatbot-conversations.json';
+$conversationsFile = dirname(__DIR__) . '/chatbot-conversations.json';
 
 if (!file_exists($conversationsFile)) {
-    die("❌ Fehler: chatbot-conversations.json nicht gefunden!\n");
+    die("❌ Fehler: chatbot-conversations.json nicht gefunden!\n   Gesucht in: {$conversationsFile}\n");
 }
 
 $data = json_decode(file_get_contents($conversationsFile), true);

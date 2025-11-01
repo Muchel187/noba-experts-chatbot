@@ -9,6 +9,9 @@
 date_default_timezone_set('Europe/Berlin');
 
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
 
 // CORS
 $allowed_origins = [
@@ -94,6 +97,18 @@ switch ($action) {
 
     case 'sync_to_hubspot':
         handleSyncToHubSpot();
+        break;
+
+    case 'batch_delete':
+        handleBatchDelete();
+        break;
+
+    case 'batch_email':
+        handleBatchEmail();
+        break;
+
+    case 'batch_sync_hubspot':
+        handleBatchSyncHubSpot();
         break;
 
     default:
@@ -387,7 +402,9 @@ function handleFavorite() {
 }
 
 function handleAIAnalyze() {
-    $session_id = $_POST['session_id'] ?? $_GET['session_id'] ?? '';
+    // JSON body support für POST-Requests
+    $input = json_decode(file_get_contents('php://input'), true);
+    $session_id = $_POST['session_id'] ?? $input['session_id'] ?? $_GET['session_id'] ?? '';
 
     if (!$session_id) {
         http_response_code(400);
@@ -419,7 +436,9 @@ function handleAIAnalyze() {
 }
 
 function handleSyncToHubSpot() {
-    $session_id = $_POST['session_id'] ?? $_GET['session_id'] ?? '';
+    // JSON body support für POST-Requests
+    $input = json_decode(file_get_contents('php://input'), true);
+    $session_id = $_POST['session_id'] ?? $input['session_id'] ?? $_GET['session_id'] ?? '';
 
     if (!$session_id) {
         http_response_code(400);
@@ -836,27 +855,44 @@ function syncToHubSpot($conversation) {
         $properties['city'] = $data['location'];
     }
 
-    // Custom Properties (müssen in HubSpot existieren!)
+    // KEINE Custom Properties - diese existieren in HubSpot nicht!
+    // Stattdessen werden lead_type, lead_score, tech_stack in der Notiz erwähnt
+
+    // Notiz mit Chat-Verlauf und Lead-Daten erstellen
+    $chatHistory = '';
+
+    // Lead-Metadaten
+    $chatHistory .= "📊 LEAD-INFORMATIONEN\n";
+    $chatHistory .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+
     if (!empty($data['lead_type'])) {
-        $properties['lead_type'] = $data['lead_type']; // Custom Property
+        $leadTypeLabel = $data['lead_type'] === 'employer' ? '💼 Kunde (sucht Mitarbeiter)' :
+                        ($data['lead_type'] === 'candidate' ? '👔 Kandidat (sucht Job)' : '❓ Unbekannt');
+        $chatHistory .= "Typ: {$leadTypeLabel}\n";
     }
 
     if (isset($data['lead_score'])) {
-        $properties['lead_score'] = $data['lead_score']; // Custom Property
+        $chatHistory .= "Lead-Score: {$data['lead_score']}/100\n";
     }
 
     if (!empty($data['tech_stack'])) {
-        $properties['tech_stack'] = implode(', ', $data['tech_stack']); // Custom Property
+        $chatHistory .= "Tech-Stack: " . implode(', ', $data['tech_stack']) . "\n";
     }
 
-    // Notiz mit Chat-Verlauf erstellen
-    $chatHistory = '';
+    if (!empty($data['experience_level'])) {
+        $chatHistory .= "Erfahrung: {$data['experience_level']}\n";
+    }
+
+    $chatHistory .= "\n";
 
     // Warnung bei Placeholder-E-Mail
     if ($usePlaceholderEmail) {
         $chatHistory .= "⚠️ WICHTIG: Placeholder-E-Mail verwendet - Keine echte E-Mail-Adresse erfasst!\n";
         $chatHistory .= "Bitte echte E-Mail-Adresse nachträglich erfassen.\n\n";
     }
+
+    $chatHistory .= "💬 CHAT-VERLAUF\n";
+    $chatHistory .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
 
     foreach ($conversation['messages'] as $msg) {
         $role = $msg['role'] === 'user' ? 'User' : 'Bot';
@@ -1512,5 +1548,256 @@ HTML;
     error_log("📧 Admin-Benachrichtigung gesendet: " . ($success ? "Erfolg" : "Fehler") . " | Lead: {$name} | Urgency: {$urgency}");
 
     return $success;
+}
+
+/**
+ * BATCH DELETE - Mehrere Konversationen auf einmal löschen
+ */
+function handleBatchDelete() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $session_ids = $input['session_ids'] ?? [];
+
+    if (empty($session_ids) || !is_array($session_ids)) {
+        http_response_code(400);
+        die(json_encode(['error' => 'session_ids array required']));
+    }
+
+    $conversations = loadConversations();
+    $before_count = count($conversations);
+
+    // Filtere alle Session-IDs raus
+    $conversations = array_filter($conversations, function($conv) use ($session_ids) {
+        return !in_array($conv['session_id'], $session_ids);
+    });
+
+    $deleted_count = $before_count - count($conversations);
+
+    saveConversations($conversations);
+
+    error_log("🗑️ Batch-Delete: {$deleted_count} Konversationen gelöscht");
+
+    echo json_encode([
+        'success' => true,
+        'deleted' => $deleted_count,
+        'remaining' => count($conversations)
+    ]);
+}
+
+/**
+ * BATCH EMAIL - KI-Analysen mehrerer Leads per E-Mail versenden
+ */
+function handleBatchEmail() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $session_ids = $input['session_ids'] ?? [];
+
+    if (empty($session_ids) || !is_array($session_ids)) {
+        http_response_code(400);
+        die(json_encode(['error' => 'session_ids array required']));
+    }
+
+    $conversations = loadConversations();
+    $leads_data = [];
+
+    // Sammle alle Leads und erstelle KI-Analysen
+    foreach ($session_ids as $session_id) {
+        $conv = array_values(array_filter($conversations, fn($c) => $c['session_id'] === $session_id))[0] ?? null;
+
+        if (!$conv) continue;
+
+        // KI-Analyse erstellen
+        $analysis = analyzeLeadWithAI($conv);
+
+        $leads_data[] = [
+            'conversation' => $conv,
+            'analysis' => $analysis
+        ];
+    }
+
+    if (empty($leads_data)) {
+        http_response_code(404);
+        die(json_encode(['error' => 'Keine Leads gefunden']));
+    }
+
+    // E-Mail erstellen
+    $adminEmail = 'Jurak.Bahrambaek@noba-experts.de';
+    $subject = "📊 NOBA Experts - {count($leads_data)} Lead-Analysen";
+
+    $html = buildBatchEmailHTML($leads_data);
+
+    $headers = [];
+    $headers[] = 'MIME-Version: 1.0';
+    $headers[] = 'Content-Type: text/html; charset=UTF-8';
+    $headers[] = 'From: NOBA Experts KI-Chatbot <nobaexpertchatbot@gmail.com>';
+    $headers[] = 'Reply-To: Jurak.Bahrambaek@noba-experts.de';
+
+    $success = mail($adminEmail, $subject, $html, implode("\r\n", $headers), '-f nobaexpertchatbot@gmail.com');
+
+    error_log("📧 Batch-Email: " . count($leads_data) . " Analysen versendet - " . ($success ? "Erfolg" : "Fehler"));
+
+    echo json_encode([
+        'success' => $success,
+        'count' => count($leads_data),
+        'message' => $success ? "E-Mail erfolgreich versendet" : "E-Mail-Versand fehlgeschlagen"
+    ]);
+}
+
+/**
+ * Erstelle HTML für Batch-Email mit mehreren Lead-Analysen
+ */
+function buildBatchEmailHTML($leads_data) {
+    $timestamp = date('d.m.Y H:i');
+
+    $html = <<<HTML
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
+            .lead-section { background: #f9f9f9; margin: 20px 0; padding: 20px; border-left: 4px solid #667eea; }
+            .lead-header { font-size: 20px; font-weight: bold; margin-bottom: 10px; }
+            .analysis-item { margin: 15px 0; }
+            .analysis-title { font-weight: bold; color: #667eea; margin-bottom: 5px; }
+            .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>📊 Lead-Analysen</h1>
+            <p>{$timestamp}</p>
+        </div>
+    HTML;
+
+    foreach ($leads_data as $idx => $lead) {
+        $conv = $lead['conversation'];
+        $analysis = $lead['analysis'];
+        $data = $conv['extracted_data'];
+
+        $name = $data['name'] ?? 'Unbekannt';
+        $email = $data['email'] ?? 'Keine E-Mail';
+        $phone = $data['phone'] ?? 'Keine Telefonnummer';
+        $leadType = $data['lead_type'] === 'employer' ? '💼 Kunde' : '👔 Kandidat';
+        $leadScore = $data['lead_score'] ?? 0;
+
+        $html .= <<<HTML
+        <div class="lead-section">
+            <div class="lead-header">Lead #{($idx + 1)}: {$name} {$leadType}</div>
+            <p><strong>E-Mail:</strong> {$email} | <strong>Telefon:</strong> {$phone} | <strong>Score:</strong> {$leadScore}/100</p>
+
+            <div class="analysis-item">
+                <div class="analysis-title">📊 Lead-Qualität</div>
+                <p>{$analysis['lead_quality']}</p>
+            </div>
+
+            <div class="analysis-item">
+                <div class="analysis-title">⚡ Dringlichkeit</div>
+                <p>{$analysis['urgency_level']}</p>
+            </div>
+
+            <div class="analysis-item">
+                <div class="analysis-title">💡 Top 3 Erkenntnisse</div>
+                <ul>
+        HTML;
+
+        foreach (array_slice($analysis['key_insights'] ?? [], 0, 3) as $insight) {
+            $html .= "<li>{$insight}</li>";
+        }
+
+        $html .= <<<HTML
+                </ul>
+            </div>
+
+            <div class="analysis-item">
+                <div class="analysis-title">🎯 Nächste Schritte</div>
+                <ol>
+        HTML;
+
+        foreach (array_slice($analysis['next_actions'] ?? [], 0, 3) as $action) {
+            $html .= "<li>{$action}</li>";
+        }
+
+        $html .= <<<HTML
+                </ol>
+            </div>
+        </div>
+        HTML;
+    }
+
+    $html .= <<<HTML
+        <div class="footer">
+            <p>🤖 Automatisch generiert vom NOBA Experts KI-Chatbot</p>
+        </div>
+    </body>
+    </html>
+    HTML;
+
+    return $html;
+}
+
+/**
+ * BATCH SYNC TO HUBSPOT - Mehrere Leads zu HubSpot synchronisieren (mit KI-Analyse)
+ */
+function handleBatchSyncHubSpot() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $session_ids = $input['session_ids'] ?? [];
+
+    if (empty($session_ids) || !is_array($session_ids)) {
+        http_response_code(400);
+        die(json_encode(['error' => 'session_ids array required']));
+    }
+
+    if (!HUBSPOT_ACCESS_TOKEN) {
+        http_response_code(500);
+        die(json_encode(['error' => 'HubSpot nicht konfiguriert']));
+    }
+
+    $conversations = loadConversations();
+    $results = [];
+    $success_count = 0;
+    $error_count = 0;
+
+    foreach ($session_ids as $session_id) {
+        $conv = array_values(array_filter($conversations, fn($c) => $c['session_id'] === $session_id))[0] ?? null;
+
+        if (!$conv) {
+            $results[] = [
+                'session_id' => $session_id,
+                'success' => false,
+                'error' => 'Konversation nicht gefunden'
+            ];
+            $error_count++;
+            continue;
+        }
+
+        // KI-Analyse erstellen
+        $analysis = analyzeLeadWithAI($conv);
+
+        // Zu HubSpot syncen (mit Analyse)
+        $syncResult = syncAnalysisToHubSpot($conv, $analysis);
+
+        if ($syncResult['success']) {
+            $success_count++;
+        } else {
+            $error_count++;
+        }
+
+        $results[] = [
+            'session_id' => $session_id,
+            'success' => $syncResult['success'],
+            'contact_id' => $syncResult['contact_id'] ?? null,
+            'error' => $syncResult['message'] ?? null
+        ];
+    }
+
+    error_log("🔄 Batch-HubSpot-Sync: {$success_count} erfolgreich, {$error_count} Fehler");
+
+    echo json_encode([
+        'success' => true,
+        'total' => count($session_ids),
+        'success_count' => $success_count,
+        'error_count' => $error_count,
+        'results' => $results
+    ]);
 }
 ?>
