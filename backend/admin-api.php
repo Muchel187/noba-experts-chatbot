@@ -452,7 +452,7 @@ function handleSyncToHubSpot() {
 // ===== HELPER FUNCTIONS =====
 
 function loadConversations() {
-    $file = __DIR__ . '/chatbot-conversations.json';
+    $file = dirname(__DIR__) . '/chatbot-conversations.json';
     if (!file_exists($file)) return [];
     $data = json_decode(file_get_contents($file), true);
     if (!$data) return [];
@@ -474,12 +474,12 @@ function loadConversations() {
 }
 
 function saveConversations($conversations) {
-    $file = __DIR__ . '/chatbot-conversations.json';
+    $file = dirname(__DIR__) . '/chatbot-conversations.json';
     file_put_contents($file, json_encode($conversations, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 }
 
 function loadAdminData() {
-    $file = __DIR__ . '/admin-data.json';
+    $file = dirname(__DIR__) . '/admin-data.json';
     if (!file_exists($file)) {
         return [
             'favorites' => [],
@@ -490,7 +490,7 @@ function loadAdminData() {
 }
 
 function saveAdminData($data) {
-    $file = __DIR__ . '/admin-data.json';
+    $file = dirname(__DIR__) . '/admin-data.json';
     file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 }
 
