@@ -5,6 +5,9 @@
  * Backend für Admin Dashboard PWA
  */
 
+// Zeitzone für Deutschland setzen
+date_default_timezone_set('Europe/Berlin');
+
 header('Content-Type: application/json; charset=utf-8');
 
 // CORS

@@ -4,6 +4,9 @@
  * Sendet Konversation als strukturierte E-Mail
  */
 
+// Zeitzone für Deutschland setzen
+date_default_timezone_set('Europe/Berlin');
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST');
