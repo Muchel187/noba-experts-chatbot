@@ -219,11 +219,33 @@ function extractLeadData($messages) {
 
         $lower = strtolower($text);
 
-        // Lead-Typ erkennen
-        if (preg_match('/(suche|brauche|benötige).*(mitarbeiter|entwickler|engineer|fachkraft|personal|team)/i', $text)) {
+        // Lead-Typ erkennen (Kunde = sucht Mitarbeiter, Kandidat = sucht Job)
+        // KUNDE/ARBEITGEBER Keywords
+        if (preg_match('/(suche|brauche|benötige|gesucht|hiring|rekrutierung|einstellen).*(mitarbeiter|entwickler|engineer|fachkraft|personal|team|spezialist|experte)/i', $text)) {
             $data['lead_type'] = 'employer';
-        } elseif (preg_match('/(suche|interesse|bewerbe).*(job|stelle|position|arbeit)/i', $text)) {
+        }
+        // Zusätzliche Kunde-Patterns
+        elseif (preg_match('/(projekt|auftrag|team erweitern|verstärkung|vakanz|offene stelle|besetzt werden)/i', $text)) {
+            $data['lead_type'] = 'employer';
+        }
+        // Zusätzlich: Wenn jemand "für mein Unternehmen" oder "für unsere Firma" sagt
+        elseif (preg_match('/(für mein|für unser|für die).*(unternehmen|firma|projekt|team)/i', $text)) {
+            $data['lead_type'] = 'employer';
+        }
+        // KANDIDAT Keywords
+        elseif (preg_match('/(suche|interesse|bewerbe|interessiere|möchte).*(job|stelle|position|arbeit|anstellung|karriere)/i', $text)) {
             $data['lead_type'] = 'candidate';
+        }
+        // Zusätzliche Kandidat-Patterns
+        elseif (preg_match('/(bin|arbeite als|erfahrung als|skills in|kann ich|mein lebenslauf|meine kenntnisse)/i', $text) && !isset($data['lead_type'])) {
+            $data['lead_type'] = 'candidate';
+        }
+        // Default: Wenn kein Typ erkannt wurde, prüfe Kontext
+        if (!isset($data['lead_type']) || $data['lead_type'] === null) {
+            // Wenn jemand nach Dienstleistungen oder Vermittlung fragt = wahrscheinlich Kunde
+            if (preg_match('/(vermittlung|dienstleistung|können sie|bieten sie|zeitarbeit|freelancer finden)/i', $text)) {
+                $data['lead_type'] = 'employer';
+            }
         }
 
         // E-Mail extrahieren

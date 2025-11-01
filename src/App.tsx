@@ -243,14 +243,22 @@ export const App = () => {
       if (!conversation || !hasMeaningfulConversation(conversation)) return;
 
       const lead = leadProfileRef.current ?? {};
-      // Wie in der alten Version: IMMER senden (nicht nur bei qualifizierten Leads)
-      // Alle Konversationen mit mindestens 2 Nachrichten werden an Admin gesendet
+      const hasDocument = !!documentContextRef.current;
+
+      // NUR senden wenn Lead qualifiziert ist ODER Dokument hochgeladen wurde
+      const isLeadQualified = isQualifiedLead(lead, conversation) || hasDocument;
+
+      if (!isLeadQualified) {
+        console.log('⚠️ Keine Email - kein qualifizierter Lead und kein Dokument');
+        return;
+      }
 
       console.log('📧 Sende automatische E-Mail an Admin...', {
         messages: conversation.length,
         leadScore: lead.leadScore,
         hasEmail: !!lead.email,
         hasPhone: !!lead.phone,
+        hasDocument,
       });
 
       // SOFORT markieren um Race Conditions zu verhindern
@@ -562,25 +570,9 @@ export const App = () => {
         updateLeadProfile(context.contactData);
       }
 
-      await emailService.sendSummary(
-        {
-          recipient_email: APP_CONFIG.notifications.adminEmail,
-          conversation: buildHistory(conversationRef.current),
-          extracted_data: leadProfileRef.current ?? {},
-          include_full_chat: true,
-          session_id: sessionId,
-          document_context: {
-            type: context.type,
-            filename: context.filename,
-            word_count: context.wordCount,
-            server_path: context.serverPath,
-            contact_data: context.contactData,
-            text: trimText(context.text, 2000),
-          },
-          auto_sent: true,
-        },
-        { keepalive: true },
-      );
+      // Email wird NICHT sofort gesendet - nur beim Verlassen der Seite
+      // Dokument-Upload wird als Lead-Signal gespeichert und beim Verlassen berücksichtigt
+      console.log('📄 Dokument hochgeladen - Email wird beim Verlassen der Seite gesendet');
 
       setIsTyping(true);
       const summaryPrompt = buildDocumentSummaryPrompt(context);

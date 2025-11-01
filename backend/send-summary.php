@@ -141,7 +141,7 @@ HTML;
 
         // Lead-Typ
         if (!empty($extractedData['lead_type'])) {
-            $type = $extractedData['lead_type'] === 'employer' ? '💼 Arbeitgeber' : '👔 Kandidat';
+            $type = $extractedData['lead_type'] === 'employer' ? '💼 Kunde (sucht Mitarbeiter)' : '👔 Kandidat (sucht Job)';
             $html .= generateDataRow('Typ', $type);
         }
 
@@ -284,7 +284,7 @@ function generatePlainText($conversation, $extractedData, $includeFullChat, $ses
         if (!empty($extractedData['phone'])) $text .= "Telefon: {$extractedData['phone']}\n";
         if (!empty($extractedData['company'])) $text .= "Firma: {$extractedData['company']}\n";
         if (!empty($extractedData['lead_type'])) {
-            $type = $extractedData['lead_type'] === 'employer' ? 'Arbeitgeber' : 'Kandidat';
+            $type = $extractedData['lead_type'] === 'employer' ? 'Kunde (sucht Mitarbeiter)' : 'Kandidat (sucht Job)';
             $text .= "Typ: {$type}\n";
         }
         if (!empty($extractedData['position'])) $text .= "Position: {$extractedData['position']}\n";
