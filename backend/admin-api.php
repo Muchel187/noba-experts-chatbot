@@ -338,7 +338,9 @@ function handleExport() {
 }
 
 function handleDeleteConversation() {
-    $session_id = $_POST['session_id'] ?? '';
+    // DELETE-Requests senden JSON im Body
+    $input = json_decode(file_get_contents('php://input'), true);
+    $session_id = $_POST['session_id'] ?? $input['session_id'] ?? $_GET['session_id'] ?? '';
 
     if (!$session_id) {
         http_response_code(400);
@@ -361,8 +363,10 @@ function handleDeleteConversation() {
 }
 
 function handleFavorite() {
-    $session_id = $_POST['session_id'] ?? '';
-    $is_favorite = filter_var($_POST['is_favorite'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    // Unterstütze JSON-Body und POST
+    $input = json_decode(file_get_contents('php://input'), true);
+    $session_id = $_POST['session_id'] ?? $input['session_id'] ?? '';
+    $is_favorite = filter_var($_POST['is_favorite'] ?? $input['is_favorite'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
     $admin_data = loadAdminData();
 
