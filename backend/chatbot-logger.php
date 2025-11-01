@@ -59,8 +59,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         return strtotime($retention) > time();
     });
 
-    // Neue Konversation hinzufügen
-    $conversations[] = $conversation;
+    // Prüfe ob Session bereits existiert und update (verhindert Duplikate!)
+    $found = false;
+    foreach ($conversations as $key => $conv) {
+        if (($conv['session_id'] ?? '') === $session_id) {
+            // Session existiert bereits - UPDATE statt neu hinzufügen
+            $conversations[$key] = $conversation;
+            $found = true;
+            break;
+        }
+    }
+
+    // Nur wenn Session nicht existiert: Neu hinzufügen
+    if (!$found) {
+        $conversations[] = $conversation;
+    }
 
     // Speichern (maximal 1000 Konversationen)
     if (count($conversations) > 1000) {
