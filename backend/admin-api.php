@@ -67,6 +67,14 @@ if (!$token || !validateJWT($token)) {
 
 // Router
 switch ($action) {
+    case 'verify':
+        handleVerifyToken();
+        break;
+
+    case 'get_stats':
+        handleGetStats();
+        break;
+
     case 'get_conversations':
         handleGetConversations();
         break;
@@ -111,6 +119,10 @@ switch ($action) {
         handleBatchSyncHubSpot();
         break;
 
+    case 'send_summary_email':
+        handleSendSummaryEmail();
+        break;
+
     default:
         http_response_code(404);
         echo json_encode(['error' => 'Unknown action: ' . $action]);
@@ -139,11 +151,119 @@ function handleLogin() {
         'success' => true,
         'token' => $token,
         'user' => [
+            'id' => '1',
             'email' => $email,
             'name' => 'Admin',
             'role' => 'admin',
         ],
         'expires_at' => date('c', time() + (8 * 60 * 60)),
+    ]);
+}
+
+function handleVerifyToken() {
+    // Token wurde bereits in Zeile 62-66 validiert
+    // Wenn wir hier sind, ist das Token gültig
+    $token = getBearerToken();
+    $payload = decodeJWT($token);
+
+    echo json_encode([
+        'success' => true,
+        'user' => [
+            'id' => '1',
+            'email' => $payload['email'] ?? ADMIN_EMAIL,
+            'name' => 'Admin',
+            'role' => $payload['role'] ?? 'admin',
+        ],
+    ]);
+}
+
+function handleGetStats() {
+    $conversations = loadConversations();
+
+    // Statistiken berechnen
+    $total_conversations = count($conversations);
+    $qualified_leads = 0;
+    $hot_leads = 0;
+    $document_uploads = 0;
+    $with_email = 0;
+    $with_phone = 0;
+    $today_conversations = 0;
+    $weekly_conversations = 0;
+    $total_lead_score = 0;
+    $conversations_with_score = 0;
+
+    $now = time();
+    $today_start = strtotime('today midnight');
+    $week_start = strtotime('monday this week midnight');
+
+    foreach ($conversations as $conv) {
+        $leadScore = $conv['extracted_data']['lead_score'] ?? 0;
+        $timestamp = strtotime($conv['timestamp']);
+
+        // Qualified leads (score >= 40)
+        if ($leadScore >= 40) {
+            $qualified_leads++;
+        }
+
+        // Hot leads (score >= 70)
+        if ($leadScore >= 70) {
+            $hot_leads++;
+        }
+
+        // Documents
+        if (!empty($conv['document_context'])) {
+            $document_uploads++;
+        }
+
+        // Contact info
+        if (!empty($conv['extracted_data']['email'])) {
+            $with_email++;
+        }
+
+        if (!empty($conv['extracted_data']['phone'])) {
+            $with_phone++;
+        }
+
+        // Today conversations
+        if ($timestamp >= $today_start) {
+            $today_conversations++;
+        }
+
+        // Weekly conversations
+        if ($timestamp >= $week_start) {
+            $weekly_conversations++;
+        }
+
+        // Average lead score
+        if ($leadScore > 0) {
+            $total_lead_score += $leadScore;
+            $conversations_with_score++;
+        }
+    }
+
+    // Calculate averages
+    $avg_lead_score = $conversations_with_score > 0
+        ? round($total_lead_score / $conversations_with_score, 1)
+        : 0;
+
+    $conversion_rate = $total_conversations > 0
+        ? round(($with_email / $total_conversations) * 100, 1)
+        : 0;
+
+    echo json_encode([
+        'success' => true,
+        'stats' => [
+            'total_conversations' => $total_conversations,
+            'qualified_leads' => $qualified_leads,
+            'hot_leads' => $hot_leads,
+            'today_conversations' => $today_conversations,
+            'weekly_conversations' => $weekly_conversations,
+            'document_uploads' => $document_uploads,
+            'with_email' => $with_email,
+            'with_phone' => $with_phone,
+            'avg_lead_score' => $avg_lead_score,
+            'conversion_rate' => $conversion_rate,
+        ],
     ]);
 }
 
@@ -550,6 +670,14 @@ function validateJWT($token) {
     if (!$payload_data || ($payload_data['exp'] ?? 0) < time()) return false;
 
     return true;
+}
+
+function decodeJWT($token) {
+    $parts = explode('.', $token);
+    if (count($parts) !== 3) return null;
+
+    [$header, $payload, $signature] = $parts;
+    return json_decode(base64UrlDecode($payload), true);
 }
 
 function getBearerToken() {
@@ -1799,5 +1927,158 @@ function handleBatchSyncHubSpot() {
         'error_count' => $error_count,
         'results' => $results
     ]);
+}
+
+function handleSendSummaryEmail() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $session_id = $input['session_id'] ?? '';
+    $recipient_email = filter_var($input['recipient_email'] ?? '', FILTER_VALIDATE_EMAIL);
+
+    if (!$session_id) {
+        http_response_code(400);
+        die(json_encode(['success' => false, 'message' => 'session_id required']));
+    }
+
+    if (!$recipient_email) {
+        http_response_code(400);
+        die(json_encode(['success' => false, 'message' => 'Ungültige E-Mail-Adresse']));
+    }
+
+    // Load conversation
+    $conversations = loadConversations();
+    $conv = array_values(array_filter($conversations, fn($c) => $c['session_id'] === $session_id))[0] ?? null;
+
+    if (!$conv) {
+        http_response_code(404);
+        die(json_encode(['success' => false, 'message' => 'Konversation nicht gefunden']));
+    }
+
+    // Generate email HTML
+    $messageCount = count($conv['messages'] ?? []);
+    $timestamp = date('d.m.Y H:i', strtotime($conv['timestamp']));
+    $leadScore = $conv['extracted_data']['lead_score'] ?? 0;
+    $leadScoreColor = $leadScore >= 70 ? '#10b981' : ($leadScore >= 40 ? '#f59e0b' : '#ef4444');
+
+    $emailHTML = generateSummaryEmailHTML($conv, $session_id, $timestamp, $messageCount, $leadScore, $leadScoreColor);
+
+    // Send email using PHP mail()
+    $subject = "Chat-Zusammenfassung - NOBA Experts (Session: " . substr($session_id, 0, 8) . "...)";
+    $headers = [
+        'MIME-Version: 1.0',
+        'Content-type: text/html; charset=UTF-8',
+        'From: NOBA Experts <noreply@noba-experts.de>',
+        'Reply-To: info@noba-experts.de',
+        'X-Mailer: PHP/' . phpversion()
+    ];
+
+    $success = mail($recipient_email, $subject, $emailHTML, implode("\r\n", $headers));
+
+    if ($success) {
+        error_log("✉️ E-Mail gesendet an {$recipient_email} für Session {$session_id}");
+        echo json_encode([
+            'success' => true,
+            'message' => 'E-Mail erfolgreich gesendet'
+        ]);
+    } else {
+        error_log("❌ E-Mail-Versand fehlgeschlagen an {$recipient_email}");
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'message' => 'E-Mail konnte nicht gesendet werden'
+        ]);
+    }
+}
+
+function generateSummaryEmailHTML($conv, $sessionId, $timestamp, $messageCount, $leadScore, $leadScoreColor) {
+    $html = <<<HTML
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat-Zusammenfassung - NOBA Experts</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9fafb;">
+    <div style="max-width: 600px; margin: 0 auto; background: white;">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #FF7B29, #e66b24); padding: 30px; text-align: center;">
+            <h1 style="margin: 0; color: white; font-size: 24px;">💬 Chat-Zusammenfassung</h1>
+            <p style="margin: 10px 0 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">NOBA Experts KI-Berater</p>
+        </div>
+
+        <!-- Content -->
+        <div style="padding: 30px;">
+            <!-- Info Box -->
+            <div style="background: #f9fafb; border-left: 4px solid #FF7B29; padding: 20px; margin-bottom: 30px;">
+                <p style="margin: 0; color: #666; font-size: 14px;">
+                    <strong style="color: #333;">Session-ID:</strong> {$sessionId}<br>
+                    <strong style="color: #333;">Datum:</strong> {$timestamp}<br>
+                    <strong style="color: #333;">Nachrichten:</strong> {$messageCount}
+HTML;
+
+    if ($leadScore > 0) {
+        $html .= <<<HTML
+                    <br><strong style="color: #333;">Lead-Qualität:</strong>
+                    <span style="background: {$leadScoreColor}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 13px;">{$leadScore} Punkte</span>
+HTML;
+    }
+
+    $html .= <<<HTML
+                </p>
+            </div>
+
+            <!-- Extracted Data -->
+HTML;
+
+    $extractedData = $conv['extracted_data'] ?? [];
+    if (!empty($extractedData['name']) || !empty($extractedData['email']) || !empty($extractedData['phone'])) {
+        $html .= '<div style="margin-bottom: 30px;"><h2 style="color: #333; font-size: 18px; margin-bottom: 15px;">📋 Kontaktdaten</h2><ul style="list-style: none; padding: 0;">';
+
+        if (!empty($extractedData['name'])) {
+            $html .= '<li style="padding: 8px 0; color: #666;"><strong style="color: #333;">Name:</strong> ' . htmlspecialchars($extractedData['name']) . '</li>';
+        }
+        if (!empty($extractedData['email'])) {
+            $html .= '<li style="padding: 8px 0; color: #666;"><strong style="color: #333;">E-Mail:</strong> ' . htmlspecialchars($extractedData['email']) . '</li>';
+        }
+        if (!empty($extractedData['phone'])) {
+            $html .= '<li style="padding: 8px 0; color: #666;"><strong style="color: #333;">Telefon:</strong> ' . htmlspecialchars($extractedData['phone']) . '</li>';
+        }
+
+        $html .= '</ul></div>';
+    }
+
+    // Chat messages
+    $html .= '<div style="margin-bottom: 30px;"><h2 style="color: #333; font-size: 18px; margin-bottom: 15px;">💬 Chat-Verlauf</h2>';
+
+    foreach (($conv['messages'] ?? []) as $msg) {
+        $isBot = ($msg['role'] ?? '') === 'bot';
+        $bgColor = $isBot ? '#f3f4f6' : '#FF7B29';
+        $textColor = $isBot ? '#333' : 'white';
+        $align = $isBot ? 'left' : 'right';
+
+        $html .= <<<HTML
+            <div style="margin-bottom: 15px; text-align: {$align};">
+                <div style="display: inline-block; max-width: 80%; background: {$bgColor}; color: {$textColor}; padding: 12px 16px; border-radius: 12px; text-align: left;">
+                    {$msg['text']}
+                </div>
+            </div>
+HTML;
+    }
+
+    $html .= <<<HTML
+            </div>
+
+            <!-- Footer -->
+            <div style="text-align: center; padding-top: 30px; border-top: 1px solid #e5e7eb;">
+                <p style="margin: 0; color: #999; font-size: 12px;">
+                    Diese E-Mail wurde automatisch vom NOBA Experts Admin Dashboard generiert.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+HTML;
+
+    return $html;
 }
 ?>

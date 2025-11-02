@@ -463,6 +463,17 @@ export const App = () => {
       setQuickReplies([]);
       setIsTyping(true);
 
+      // Log user message immediately to prevent data loss on page reload
+      try {
+        await loggerService.logConversation({
+          messages: nextConversation,
+          sessionId,
+          documentContext: documentContextRef.current ?? undefined,
+        });
+      } catch (error) {
+        console.info('[logger] could not log user message', error);
+      }
+
       try {
         const response = await chatService.sendMessage({
           message: userMessage.text,
@@ -500,6 +511,14 @@ export const App = () => {
         };
         const next = [...prev, userSelection];
         conversationRef.current = next;
+
+        // Log immediately
+        loggerService.logConversation({
+          messages: next,
+          sessionId,
+          documentContext: documentContextRef.current ?? undefined,
+        }).catch(err => console.info('[logger] could not log', err));
+
         return next;
       });
       return;
@@ -529,6 +548,14 @@ export const App = () => {
 
         const next = [...prev, userSelection, botResponse];
         conversationRef.current = next;
+
+        // Log immediately
+        loggerService.logConversation({
+          messages: next,
+          sessionId,
+          documentContext: documentContextRef.current ?? undefined,
+        }).catch(err => console.info('[logger] could not log', err));
+
         return next;
       });
       return;
@@ -547,6 +574,14 @@ export const App = () => {
         };
         const next = [...prev, userSelection];
         conversationRef.current = next;
+
+        // Log immediately
+        loggerService.logConversation({
+          messages: next,
+          sessionId,
+          documentContext: documentContextRef.current ?? undefined,
+        }).catch(err => console.info('[logger] could not log', err));
+
         return next;
       });
       return;
@@ -592,6 +627,14 @@ export const App = () => {
       setChatMessages((prev: ChatMessage[]) => {
         const next = [...prev, systemMessage];
         conversationRef.current = next;
+
+        // Log document upload immediately
+        loggerService.logConversation({
+          messages: next,
+          sessionId,
+          documentContext: context,
+        }).catch(err => console.info('[logger] could not log document upload', err));
+
         return next;
       });
 
