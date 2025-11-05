@@ -98,6 +98,28 @@ export const SettingsDrawer = ({
           <span className="text-base">🔁</span>
         </button>
       </div>
+
+      <div className="mt-4 space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Rechtliches</p>
+        <a
+          href="https://www.noba-experts.de/Datenschutz.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-noba-orange hover:text-noba-orange"
+        >
+          <span>Datenschutz</span>
+          <span className="text-base">🔒</span>
+        </a>
+        <a
+          href="https://www.noba-experts.de/impressum.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-noba-orange hover:text-noba-orange"
+        >
+          <span>Impressum</span>
+          <span className="text-base">ℹ️</span>
+        </a>
+      </div>
     </div>
   </div>
 );

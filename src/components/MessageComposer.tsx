@@ -1,8 +1,9 @@
-import { FormEvent, useRef, type ChangeEvent, type KeyboardEvent } from 'react';
+import { FormEvent, useRef, useState, useEffect, type ChangeEvent, type KeyboardEvent } from 'react';
 import { useAutoResizeTextarea } from '@/hooks/useAutoResizeTextarea';
-import { Send, Paperclip, Loader2 } from 'lucide-react';
+import { Send, Paperclip, Loader2, Mic, Square } from 'lucide-react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 
 interface MessageComposerProps {
   value: string;
@@ -24,10 +25,45 @@ export const MessageComposer = ({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   useAutoResizeTextarea(textareaRef, value, { maxHeight: 200 });
 
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+
+  // Speech recognition hook
+  const {
+    isListening,
+    transcript,
+    startListening,
+    stopListening,
+    supportsRecognition,
+    error: recognitionError,
+  } = useSpeechRecognition({
+    language: 'de-DE',
+    continuous: true,
+    interimResults: true,
+    onResult: (text) => {
+      setVoiceTranscript(text);
+    },
+  });
+
+  // Update textarea with voice transcript
+  useEffect(() => {
+    if (voiceTranscript) {
+      onChange(voiceTranscript);
+    }
+  }, [voiceTranscript, onChange]);
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (!value.trim() || disabled) return;
     onSubmit();
+  };
+
+  const handleMicClick = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      setVoiceTranscript('');
+      startListening();
+    }
   };
 
   const charPercentage = (value.length / maxLength) * 100;
@@ -58,6 +94,22 @@ export const MessageComposer = ({
 
         {/* Input Area */}
         <div className="relative flex-1">
+          {/* Recording Indicator */}
+          {isListening && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="absolute -top-10 left-0 flex items-center gap-2 rounded-full bg-red-500 px-4 py-2 text-white shadow-lg"
+            >
+              <span className="relative flex h-3 w-3">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-white"></span>
+              </span>
+              <span className="text-sm font-medium">Aufnahme läuft...</span>
+            </motion.div>
+          )}
+
           <textarea
             ref={textareaRef}
             value={value}
@@ -122,25 +174,52 @@ export const MessageComposer = ({
           </div>
         </div>
 
-        {/* Send Button */}
-        <motion.button
-          type="submit"
-          disabled={disabled || !value.trim()}
-          whileHover={{ scale: disabled || !value.trim() ? 1 : 1.05 }}
-          whileTap={{ scale: disabled || !value.trim() ? 1 : 0.95 }}
-          className={clsx(
-            'flex h-12 w-12 shrink-0 items-center justify-center rounded-full shadow-lg transition-all',
-            disabled || !value.trim()
-              ? 'cursor-not-allowed bg-slate-300 text-slate-500'
-              : 'bg-gradient-to-br from-noba-500 to-noba-600 text-white shadow-glow-orange hover:shadow-glow-orange-lg',
-          )}
-        >
-          {disabled ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <Send className="h-5 w-5" />
-          )}
-        </motion.button>
+        {/* Send/Microphone Button */}
+        {value.trim() ? (
+          // Send Button - shown when there's text
+          <motion.button
+            type="submit"
+            disabled={disabled}
+            whileHover={{ scale: disabled ? 1 : 1.05 }}
+            whileTap={{ scale: disabled ? 1 : 0.95 }}
+            className={clsx(
+              'flex h-12 w-12 shrink-0 items-center justify-center rounded-full shadow-lg transition-all',
+              disabled
+                ? 'cursor-not-allowed bg-slate-300 text-slate-500'
+                : 'bg-gradient-to-br from-noba-500 to-noba-600 text-white shadow-glow-orange hover:shadow-glow-orange-lg',
+            )}
+          >
+            {disabled ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Send className="h-5 w-5" />
+            )}
+          </motion.button>
+        ) : (
+          // Microphone Button - shown when textarea is empty
+          <motion.button
+            type="button"
+            onClick={handleMicClick}
+            disabled={disabled || !supportsRecognition}
+            whileHover={{ scale: disabled || !supportsRecognition ? 1 : 1.05 }}
+            whileTap={{ scale: disabled || !supportsRecognition ? 1 : 0.95 }}
+            className={clsx(
+              'flex h-12 w-12 shrink-0 items-center justify-center rounded-full shadow-lg transition-all',
+              disabled || !supportsRecognition
+                ? 'cursor-not-allowed bg-slate-300 text-slate-500'
+                : isListening
+                ? 'bg-gradient-to-br from-red-500 to-red-600 text-white shadow-glow-red animate-pulse'
+                : 'bg-gradient-to-br from-noba-500 to-noba-600 text-white shadow-glow-orange hover:shadow-glow-orange-lg',
+            )}
+            title={!supportsRecognition ? 'Spracherkennung nicht unterstützt' : isListening ? 'Aufnahme stoppen' : 'Spracheingabe starten'}
+          >
+            {isListening ? (
+              <Square className="h-5 w-5" />
+            ) : (
+              <Mic className="h-5 w-5" />
+            )}
+          </motion.button>
+        )}
       </div>
     </form>
   );

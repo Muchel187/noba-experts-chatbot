@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOBA LinkedIn Helper - Bookmarklet Installation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #ff7b29;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 30px;
+        }
+
+        .step {
+            background: #f8f9fa;
+            border-left: 4px solid #ff7b29;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+
+        .step-number {
+            display: inline-block;
+            background: #ff7b29;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .step-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .step-content {
+            color: #555;
+            line-height: 1.6;
+        }
+
+        .bookmarklet {
+            display: inline-block;
+            background: linear-gradient(135deg, #ff7b29 0%, #ff9f50 100%);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 18px;
+            box-shadow: 0 4px 15px rgba(255, 123, 41, 0.4);
+            transition: all 0.3s;
+            cursor: move;
+            margin: 20px 0;
+        }
+
+        .bookmarklet:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 123, 41, 0.6);
+        }
+
+        .drag-instruction {
+            background: #e3f2fd;
+            border: 2px dashed #2196F3;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 20px 0;
+            color: #1565c0;
+            font-weight: 600;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            color: #856404;
+        }
+
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            color: #155724;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #999;
+            font-size: 14px;
+        }
+
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #e83e8c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 NOBA LinkedIn Helper</h1>
+        <p class="subtitle">Automatisierte LinkedIn-Outreach für Mina - Deine KI-Recruiterin</p>
+
+        <div class="warning">
+            <strong>⚠️ Wichtig:</strong> Dieses Tool ist semi-automatisch und entspricht LinkedIn's Terms of Service. Du musst manuell auf "Senden" klicken!
+        </div>
+
+        <div class="step">
+            <div class="step-title">
+                <span class="step-number">1</span>
+                Ziehe den Button in deine Lesezeichen-Leiste
+            </div>
+            <div class="step-content">
+                <div class="drag-instruction">
+                    👇 Ziehe diesen Button in deine Browser-Lesezeichen-Leiste 👇
+                </div>
+                <div style="text-align: center;">
+                    <a href="javascript:(function()%7B(function()%7B'use%20strict'%3Bconst%20CONFIG%3D%7BchatbotUrl%3A'https%3A%2F%2Fchatbot.noba-experts.de'%2CsenderName%3A'Jurak%20Bahrambaek'%2CsenderTitle%3A'NOBA%20Experts%20GmbH'%7D%3Bconst%20MESSAGE_TEMPLATES%3D%7Bdirect%3A%7Bsubject%3A(profile)%3D%3E%60Ihr%20direkter%20Ansprechpartner%20statt%20klassischer%20Personalberatung%60%2Cbody%3A(profile)%3D%3E%60Sehr%20geehrte%2Fr%20%24%7Bprofile.firstName%7D%2C%0A%0Akeine%20Lust%20mehr%20auf%20Terminabstimmungen%20und%20Gespr%C3%A4che%20mit%20externen%20Personalberatern%3F%0A%0ADas%20kennen%20Sie%20sicher%3A%20Bedarfsanalysen%2C%20Briefings%2C%20R%C3%BCckfragen%2C%20Updates%20%E2%80%93%20jedes%20Mal%20ein%20neues%20Meeting%20oder%20E-Mail-Marathon.%0A%0ABei%20NOBA%20Experts%20geht%20das%20anders%3A%0A%0A**Mina**%20%E2%80%93%20unsere%20KI-Recruiterin%20%E2%80%93%20ist%20Ihr%20direkter%20Ansprechpartner.%20Per%20Chat%20oder%20Voice%2C%2024%2F7%20verf%C3%BCgbar.%0A%0AWas%20Mina%20f%C3%BCr%20Sie%20%C3%BCbernimmt%3A%0A%E2%9C%93%20Bedarfsanalyse%20%E2%80%93%20ohne%20Terminvereinbarung%0A%E2%9C%93%20Anforderungen%20kl%C3%A4ren%20%E2%80%93%20wann%20es%20Ihnen%20passt%0A%E2%9C%93%20Kandidatenvorschl%C3%A4ge%20%E2%80%93%20direkt%20vorqualifiziert%0A%E2%9C%93%20Keine%20Zwischenpersonen%2C%20keine%20Missverst%C3%A4ndnisse%0A%0ANat%C3%BCrlich%20steht%20bei%20Bedarf%20auch%20unser%20menschliches%20Recruiting-Team%20zur%20Verf%C3%BCgung.%20Aber%20den%20ersten%20Austausch%20%C3%BCbernimmt%20Mina.%0A%0ASehen%20Sie%20selbst%3A%20%24%7BCONFIG.chatbotUrl%7D%0A%0AMit%20freundlichen%20Gr%C3%BC%C3%9Fen%2C%0A%24%7BCONFIG.senderName%7D%0A%24%7BCONFIG.senderTitle%7D%60%7D%2Ctimesaver%3A%7Bsubject%3A(profile)%3D%3E%60Weniger%20Meetings%20mit%20Personalberatern%20%E2%80%93%20mehr%20Zeit%20f%C3%BCrs%20Wesentliche%60%2Cbody%3A(profile)%3D%3E%60Sehr%20geehrte%2Fr%20%24%7Bprofile.firstName%7D%2C%0A%0Awie%20viele%20Stunden%20verbringen%20Sie%20monatlich%20in%20Gespr%C3%A4chen%20mit%20externen%20Personalberatern%3F%0A%0ATermine%20abstimmen%2C%20Bedarf%20erkl%C3%A4ren%2C%20Anforderungen%20pr%C3%A4zisieren%2C%20auf%20R%C3%BCckmeldungen%20warten%20%E2%80%93%20bei%20%24%7Bprofile.company%7D%20haben%20Sie%20Wichtigeres%20zu%20tun.%0A%0A**Mina**%20%C3%BCbernimmt%20diese%20Gespr%C3%A4che%20f%C3%BCr%20Sie%3A%0A%E2%9C%93%20Sie%20sprechen%20direkt%20mit%20Mina%20(per%20Chat%20oder%20Voice)%0A%E2%9C%93%20Mina%20f%C3%BChrt%20die%20Bedarfsanalyse%20mit%20Ihnen%20durch%0A%E2%9C%93%20Kl%C3%A4rt%20Anforderungen%20und%20versteht%20Ihre%20W%C3%BCnsche%0A%E2%9C%93%20Arbeitet%2024%2F7%20%E2%80%93%20keine%20Terminabstimmung%20n%C3%B6tig%0A%E2%9C%93%20Liefert%20direkt%20vorqualifizierte%20Kandidaten%0A%0ADas%20Ergebnis%3A%20Sie%20sparen%20sich%20die%20Zeit%20f%C3%BCr%20endlose%20Abstimmungsschleifen%20und%20konzentrieren%20sich%20auf%20die%20wirklich%20wichtigen%20Gespr%C3%A4che%20%E2%80%93%20mit%20den%20passenden%20Kandidaten.%0A%0AIch%20w%C3%BCrde%20mich%20freuen%2C%20wenn%20Sie%20Mina%20kennenlernen%3A%20%24%7BCONFIG.chatbotUrl%7D%0A%0AMit%20besten%20Gr%C3%BC%C3%9Fen%2C%0A%24%7BCONFIG.senderName%7D%0A%24%7BCONFIG.senderTitle%7D%60%7D%2Cmodern%3A%7Bsubject%3A(profile)%3D%3E%60KI-Ansprechpartner%20statt%20klassischer%20Personalberatung%20%E2%80%93%20f%C3%BCr%20%24%7Bprofile.company%7D%60%2Cbody%3A(profile)%3D%3E%60Sehr%20geehrte%2Fr%20%24%7Bprofile.firstName%7D%2C%0A%0Adie%20klassische%20Personalberatung%20kostet%20Sie%20nicht%20nur%20Geld%2C%20sondern%20vor%20allem%20Zeit%3A%20Briefings%2C%20Bedarfsanalysen%2C%20R%C3%BCckfragen%2C%20Korrekturen%2C%20unpassende%20Profile.%0A%0ABei%20NOBA%20Experts%20gehen%20wir%20einen%20neuen%20Weg%3A%0A%0A**Mina**%20%E2%80%93%20unsere%20KI-Recruiterin%20%E2%80%93%20ist%20Ihr%20direkter%20Ansprechpartner.%20Sie%20sprechen%20mit%20Mina%20(per%20Chat%20oder%20Voice)%20statt%20mit%20einem%20externen%20Berater.%0A%0AMina%20%C3%BCbernimmt%20f%C3%BCr%20Sie%3A%0A%E2%9C%93%20Bedarfsanalyse%20und%20Anforderungsaufnahme%0A%E2%9C%93%20Kandidatensuche%20und%20Vorqualifizierung%0A%E2%9C%93%20Direkter%20Austausch%20%E2%80%93%20wann%20immer%20Sie%20Zeit%20haben%0A%E2%9C%93%2024%2F7%20erreichbar%2C%20keine%20Wartezeiten%0A%0AWas%20das%20f%C3%BCr%20Sie%20bedeutet%3A%0A%E2%9C%93%20Keine%20Meetings%20mehr%20mit%20Beratern%20abstimmen%0A%E2%9C%93%20Pr%C3%A4zisere%20Ergebnisse%2C%20da%20keine%20Kommunikationsverluste%0A%E2%9C%93%20Schnellere%20Besetzung%20Ihrer%20Positionen%0A%E2%9C%93%20Bei%20Bedarf%20steht%20nat%C3%BCrlich%20auch%20unser%20menschliches%20Team%20bereit%0A%0ASehen%20Sie%20selbst%3A%20%24%7BCONFIG.chatbotUrl%7D%0A%0AMit%20freundlichen%20Gr%C3%BC%C3%9Fen%2C%0A%24%7BCONFIG.senderName%7D%0A%24%7BCONFIG.senderTitle%7D%60%7D%7D%3Bfunction%20analyzeProfile()%7Btry%7Bconst%20nameElement%3Ddocument.querySelector('.artdeco-entity-lockup__title')%7C%7Cdocument.querySelector('%5Bdata-anonymize%3D%22person-name%22%5D')%3Bconst%20name%3DnameElement%3FnameElement.textContent.trim()%3A'dort'%3Bconst%20firstName%3Dname.split('%20')%5B0%5D%7C%7C'dort'%3Bconst%20companyElement%3Ddocument.querySelector('.artdeco-entity-lockup__subtitle')%7C%7Cdocument.querySelector('%5Bdata-anonymize%3D%22company-name%22%5D')%3Bconst%20company%3DcompanyElement%3FcompanyElement.textContent.trim()%3A'Ihrem%20Unternehmen'%3Breturn%7Bname%2CfirstName%2Ccompany%7D%7Dcatch(error)%7Breturn%7Bname%3A'dort'%2CfirstName%3A'dort'%2Ccompany%3A'Ihrem%20Unternehmen'%7D%7D%7Dfunction%20generateMessage(profile)%7Bconst%20templates%3DObject.values(MESSAGE_TEMPLATES)%3Bconst%20randomTemplate%3Dtemplates%5BMath.floor(Math.random()*templates.length)%5D%3Breturn%7Bsubject%3ArandomTemplate.subject(profile)%2Cbody%3ArandomTemplate.body(profile)%7D%7Dif(document.getElementById('noba-helper-panel'))%7Bdocument.getElementById('noba-helper-panel').remove()%7Dconst%20panel%3Ddocument.createElement('div')%3Bpanel.id%3D'noba-helper-panel'%3Bpanel.innerHTML%3D%60%3Cstyle%3E%23noba-helper-panel%7Bposition%3Afixed%3Btop%3A20px%3Bright%3A20px%3Bwidth%3A450px%3Bbackground%3Awhite%3Bborder%3A2px%20solid%20%23ff7b29%3Bborder-radius%3A12px%3Bbox-shadow%3A0%2010px%2040px%20rgba(0%2C0%2C0%2C0.2)%3Bz-index%3A999999%3Bfont-family%3Asans-serif%7D%23noba-helper-header%7Bbackground%3A%23ff7b29%3Bcolor%3Awhite%3Bpadding%3A16px%3Bfont-weight%3A600%3Bdisplay%3Aflex%3Bjustify-content%3Aspace-between%3Balign-items%3Acenter%3Bborder-radius%3A10px%2010px%200%200%7D%23noba-helper-close%7Bbackground%3Anone%3Bborder%3Anone%3Bcolor%3Awhite%3Bfont-size%3A24px%3Bcursor%3Apointer%7D%23noba-helper-body%7Bpadding%3A20px%3Bmax-height%3A70vh%3Boverflow-y%3Aauto%7D.noba-profile-info%7Bbackground%3A%23f8f9fa%3Bpadding%3A12px%3Bborder-radius%3A8px%3Bmargin-bottom%3A16px%3Bfont-size%3A14px%7D.noba-subject%7Bbackground%3A%23e3f2fd%3Bpadding%3A12px%3Bborder-radius%3A8px%3Bmargin-bottom%3A12px%3Bfont-size%3A14px%3Bfont-weight%3A600%3Bcolor%3A%231565c0%3Bborder-left%3A4px%20solid%20%232196F3%7D.noba-message-preview%7Bborder%3A1px%20solid%20%23ddd%3Bborder-radius%3A8px%3Bpadding%3A16px%3Bmargin-bottom%3A16px%3Bfont-size%3A14px%3Bwhite-space%3Apre-wrap%3Bmax-height%3A300px%3Boverflow-y%3Aauto%3Bline-height%3A1.6%7D.noba-btn%7Bflex%3A1%3Bpadding%3A12px%3Bborder%3Anone%3Bborder-radius%3A8px%3Bfont-weight%3A600%3Bcursor%3Apointer%3Bmargin%3A5px%3Btransition%3Aall%200.2s%7D.noba-btn-primary%7Bbackground%3A%23ff7b29%3Bcolor%3Awhite%7D.noba-btn-primary%3Ahover%7Bbackground%3A%23e66a1f%7D.noba-btn-secondary%7Bbackground%3A%23f0f0f0%3Bcolor%3A%23333%7D.noba-btn-secondary%3Ahover%7Bbackground%3A%23e0e0e0%7D.noba-action-buttons%7Bdisplay%3Aflex%3Bgap%3A10px%7D%3C%2Fstyle%3E%3Cdiv%20id%3D%22noba-helper-header%22%3E%3Cspan%3E%F0%9F%A4%96%20NOBA%20Mina%20Helper%3C%2Fspan%3E%3Cbutton%20id%3D%22noba-helper-close%22%3E%C3%97%3C%2Fbutton%3E%3C%2Fdiv%3E%3Cdiv%20id%3D%22noba-helper-body%22%3E%3Cdiv%20class%3D%22noba-profile-info%22%20id%3D%22noba-profile-info%22%3EKlicke%20auf%20%22Profil%20analysieren%22%3C%2Fdiv%3E%3Cdiv%20class%3D%22noba-subject%22%20id%3D%22noba-subject%22%20style%3D%22display%3Anone%22%3E%3Cstrong%3EBetreff%3A%3C%2Fstrong%3E%20%3Cspan%20id%3D%22noba-subject-text%22%3E%3C%2Fspan%3E%3C%2Fdiv%3E%3Cdiv%20class%3D%22noba-message-preview%22%20id%3D%22noba-message-preview%22%3ENachricht%20wird%20generiert...%3C%2Fdiv%3E%3Cdiv%20class%3D%22noba-action-buttons%22%3E%3Cbutton%20class%3D%22noba-btn%20noba-btn-secondary%22%20id%3D%22noba-analyze-btn%22%3E%F0%9F%94%8D%20Analysieren%3C%2Fbutton%3E%3Cbutton%20class%3D%22noba-btn%20noba-btn-secondary%22%20id%3D%22noba-regenerate-btn%22%3E%F0%9F%94%84%20Neu%3C%2Fbutton%3E%3Cbutton%20class%3D%22noba-btn%20noba-btn-primary%22%20id%3D%22noba-copy-btn%22%3E%F0%9F%93%8B%20Kopieren%3C%2Fbutton%3E%3C%2Fdiv%3E%3C%2Fdiv%3E%60%3Bdocument.body.appendChild(panel)%3Bdocument.getElementById('noba-helper-close').addEventListener('click'%2C()%3D%3Epanel.remove())%3Blet%20currentProfile%3Dnull%3Blet%20currentMessage%3Dnull%3Bdocument.getElementById('noba-analyze-btn').addEventListener('click'%2C()%3D%3E%7BcurrentProfile%3DanalyzeProfile()%3BcurrentMessage%3DgenerateMessage(currentProfile)%3Bdocument.getElementById('noba-profile-info').innerHTML%3D%60%3Cstrong%3EName%3A%3C%2Fstrong%3E%20%24%7BcurrentProfile.name%7D%3Cbr%3E%3Cstrong%3EFirma%3A%3C%2Fstrong%3E%20%24%7BcurrentProfile.company%7D%60%3Bdocument.getElementById('noba-subject').style.display%3D'block'%3Bdocument.getElementById('noba-subject-text').textContent%3DcurrentMessage.subject%3Bdocument.getElementById('noba-message-preview').textContent%3DcurrentMessage.body%7D)%3Bdocument.getElementById('noba-regenerate-btn').addEventListener('click'%2C()%3D%3E%7Bif(currentProfile)%7BcurrentMessage%3DgenerateMessage(currentProfile)%3Bdocument.getElementById('noba-subject-text').textContent%3DcurrentMessage.subject%3Bdocument.getElementById('noba-message-preview').textContent%3DcurrentMessage.body%7D%7D)%3Bdocument.getElementById('noba-copy-btn').addEventListener('click'%2C()%3D%3E%7Bconst%20fullMessage%3D%60Betreff%3A%20%24%7BcurrentMessage.subject%7D%0A%0A%24%7BcurrentMessage.body%7D%60%3Bnavigator.clipboard.writeText(fullMessage).then(()%3D%3E%7Bconst%20btn%3Ddocument.getElementById('noba-copy-btn')%3Bbtn.textContent%3D'%E2%9C%85%20Kopiert!'%3BsetTimeout(()%3D%3Ebtn.innerHTML%3D'%F0%9F%93%8B%20Kopieren'%2C2000)%7D)%7D)%3Bconsole.log('%25c%F0%9F%A4%96%20NOBA%20LinkedIn%20Helper%20geladen!'%2C'color%3A%20%23ff7b29%3B%20font-size%3A%2016px%3B%20font-weight%3A%20bold%3B')%7D)()%7D)()%3B" class="bookmarklet">
+                        🤖 NOBA LinkedIn Helper
+                    </a>
+                </div>
+                <p style="margin-top: 15px; font-size: 14px; color: #666;">
+                    Falls das Ziehen nicht funktioniert: <strong>Rechtsklick → "Lesezeichen hinzufügen"</strong>
+                </p>
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-title">
+                <span class="step-number">2</span>
+                Öffne LinkedIn Sales Navigator
+            </div>
+            <div class="step-content">
+                Gehe zu <code>linkedin.com/sales</code> und navigiere zu einem HR-Kontakt.
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-title">
+                <span class="step-number">3</span>
+                Klicke auf das Bookmarklet
+            </div>
+            <div class="step-content">
+                Klicke in deiner Lesezeichen-Leiste auf <strong>"🤖 NOBA LinkedIn Helper"</strong>.
+                Ein oranges Panel erscheint rechts oben.
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-title">
+                <span class="step-number">4</span>
+                Nutze das Tool
+            </div>
+            <div class="step-content">
+                <ol style="margin-left: 20px; margin-top: 10px;">
+                    <li>Klicke <strong>"🔍 Analysieren"</strong> - Profil wird ausgelesen</li>
+                    <li>Prüfe <strong>Betreffzeile</strong> und Nachricht</li>
+                    <li>Klicke <strong>"🔄 Neu"</strong> - Generiert neue Variante</li>
+                    <li>Klicke <strong>"📋 Kopieren"</strong> - Kopiert Betreff + Nachricht</li>
+                    <li>Öffne LinkedIn Nachrichtenfeld MANUELL</li>
+                    <li>Füge Betreff und Nachricht ein (Strg+V)</li>
+                    <li>Sende MANUELL</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="success">
+            <strong>✅ Fertig!</strong> Jetzt kannst du auf jedem LinkedIn-Profil das Tool nutzen, ohne Code in die Console zu kopieren.
+        </div>
+
+        <div class="warning">
+            <strong>⚠️ LinkedIn Best Practices:</strong>
+            <ul style="margin-left: 20px; margin-top: 10px;">
+                <li>Max. 10-15 Nachrichten pro Tag</li>
+                <li>2-5 Minuten Pause zwischen Nachrichten</li>
+                <li>Lies jede Nachricht durch bevor du sendest</li>
+                <li>Passe bei Bedarf individuell an</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            Made with ❤️ for NOBA Experts GmbH |
+            <a href="https://chatbot.noba-experts.de" target="_blank" style="color: #ff7b29;">chatbot.noba-experts.de</a>
+        </div>
+    </div>
+</body>
+</html>

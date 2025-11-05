@@ -211,7 +211,7 @@ export const App = () => {
     if (!consentGranted || chatMessages.length > 0) return;
 
     const welcome = createBotMessage(
-      '👋 Hallo! Ich bin der KI-Berater von NOBA Experts.\n\n⚠️ Hinweis: Ich arbeite KI-gestützt und kann Fehler machen. Für verbindliche Auskünfte wenden Sie sich gerne direkt an unser Recruiting-Team. Wie kann ich Sie heute unterstützen?',
+      '👋 Hallo! Ich bin Mina, Ihre KI-Beraterin von NOBA Experts.\n\n⚠️ Hinweis: Ich arbeite KI-gestützt und kann Fehler machen. Ich darf keine verbindlichen Zusagen oder Deals abschließen. Für verbindliche Auskünfte wenden Sie sich gerne direkt an unser Recruiting-Team. Wie kann ich Sie heute unterstützen?',
     );
     setChatMessages([welcome]);
     // Set initial quick replies

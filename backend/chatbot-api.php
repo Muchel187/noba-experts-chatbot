@@ -75,9 +75,8 @@ $CONFIG = [
     'MAX_REQUESTS_PER_MINUTE' => 30,
     'MAX_MESSAGE_LENGTH' => 500000, // 500KB für Document Uploads (10MB komprimiert)
 
-    // HubSpot (optional für direkte Integration)
-    'HUBSPOT_PORTAL_ID' => '146015266',
-    'HUBSPOT_FORM_ID' => 'ef5093e2-81d2-4860-a537-79cebadf625c'
+    // HubSpot: NUR für Admin-Dashboard (admin-api.php)
+    // Chatbot hat KEINEN HubSpot-Zugriff aus Datenschutzgründen!
 ];
 
 // Erlaube Überschreiben per Umgebungsvariable, ohne Codeänderungen auf dem Server
@@ -175,95 +174,177 @@ function fetchHomepageContent() {
     return $text;
 }
 
-// ===== AKTUELLE STELLENANGEBOTE FETCHEN =====
-function fetchCurrentJobs() {
-    static $cache = null;
-    static $cache_time = 0;
+// ===== VAKANZEN AUS JSON LADEN (DSGVO-konform anonymisiert) =====
+function fetchCurrentVacancies() {
+    $file = __DIR__ . '/../vacancies.json';
 
-    // Cache für 1 Stunde (3600 Sekunden)
-    if ($cache !== null && (time() - $cache_time) < 3600) {
-        return $cache;
+    if (!file_exists($file)) {
+        error_log('⚠️ Keine Vakanzen-Datei gefunden');
+        return [];
     }
 
-    try {
-        $url = 'https://www.noba-experts.de/#jobs';
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Falls SSL-Probleme
-        $html = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+    $data = json_decode(file_get_contents($file), true);
 
-        if ($http_code !== 200 || !$html) {
-            error_log('⚠️ Konnte Stellenangebote nicht laden: HTTP ' . $http_code);
-            return null;
+    if (!$data) {
+        error_log('⚠️ Vakanzen-Datei konnte nicht gelesen werden');
+        return [];
+    }
+
+    // Nur aktive Vakanzen zurückgeben
+    $activeVacancies = array_filter($data, fn($v) => ($v['status'] ?? 'active') === 'active');
+
+    error_log('✅ Vakanzen geladen: ' . count($activeVacancies) . ' aktive Stellen');
+
+    return array_values($activeVacancies);
+}
+
+// ===== KANDIDATENPROFILE AUS JSON LADEN (DSGVO-konform anonymisiert) =====
+function fetchCandidateProfiles() {
+    $file = __DIR__ . '/../candidate-profiles.json';
+
+    if (!file_exists($file)) {
+        error_log('⚠️ Keine Kandidatenprofile-Datei gefunden');
+        return [];
+    }
+
+    $data = json_decode(file_get_contents($file), true);
+
+    if (!$data) {
+        error_log('⚠️ Kandidatenprofile-Datei konnte nicht gelesen werden');
+        return [];
+    }
+
+    // Nur verfügbare Kandidaten zurückgeben
+    $availableCandidates = array_filter($data, fn($c) => ($c['status'] ?? 'available') === 'available');
+
+    error_log('✅ Kandidatenprofile geladen: ' . count($availableCandidates) . ' verfügbare Profile');
+
+    return array_values($availableCandidates);
+}
+
+// ===== MATCHING: Finde passende Vakanzen für Kandidaten =====
+function findMatchingVacancies($userMessage, $vacancies) {
+    if (empty($vacancies)) {
+        return [];
+    }
+
+    $lower = strtolower($userMessage);
+    $matches = [];
+
+    // Extrahiere Skills aus User-Nachricht
+    $commonSkills = [
+        'php', 'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node',
+        'docker', 'kubernetes', 'aws', 'azure', 'devops', 'cloud', 'ci/cd',
+        'sql', 'mysql', 'postgresql', 'mongodb', 'redis',
+        'embedded', 'c++', 'c#', 'rust', 'golang', 'typescript',
+        'machine learning', 'ai', 'data science', 'big data',
+        'scrum', 'agile', 'kanban', 'project management'
+    ];
+
+    $userSkills = [];
+    foreach ($commonSkills as $skill) {
+        if (stripos($lower, $skill) !== false) {
+            $userSkills[] = strtolower($skill);
         }
+    }
 
-        // Extrahiere Job-Karten (vereinfachtes Pattern für typische Job-Listings)
-        $jobs = [];
+    // Score jede Vakanz
+    foreach ($vacancies as $vacancy) {
+        $score = 0;
+        $requiredSkills = array_map('strtolower', $vacancy['required_skills'] ?? []);
+        $niceToHaveSkills = array_map('strtolower', $vacancy['nice_to_have_skills'] ?? []);
 
-        // Pattern 1: Versuche <h3> oder <h2> Tags mit Job-Titeln zu finden
-        if (preg_match_all('/<h[23][^>]*class="[^"]*job[^"]*"[^>]*>(.*?)<\/h[23]>/is', $html, $matches)) {
-            foreach ($matches[1] as $title) {
-                $jobs[] = ['title' => strip_tags(trim($title))];
+        // Skill-Matching
+        foreach ($userSkills as $userSkill) {
+            if (in_array($userSkill, $requiredSkills)) {
+                $score += 10; // Required Skills = hohe Priorität
+            } elseif (in_array($userSkill, $niceToHaveSkills)) {
+                $score += 5; // Nice-to-have = mittlere Priorität
             }
         }
 
-        // Pattern 2: Falls kein spezifisches Pattern, versuche allgemeine Struktur
-        if (empty($jobs)) {
-            // Extrahiere alle <article> oder <div class="job"> Elemente
-            if (preg_match_all('/<(?:article|div)[^>]*(?:class="[^"]*(?:job|position|vacancy)[^"]*")[^>]*>(.*?)<\/(?:article|div)>/is', $html, $matches)) {
-                foreach ($matches[1] as $job_html) {
-                    // Extrahiere ersten h2/h3 Tag als Titel
-                    if (preg_match('/<h[23][^>]*>(.*?)<\/h[23]>/is', $job_html, $title_match)) {
-                        $title = strip_tags(trim($title_match[1]));
-                        // Extrahiere zusätzliche Infos (Ort, Typ)
-                        $details = '';
-                        if (preg_match('/<p[^>]*>(.*?)<\/p>/is', $job_html, $details_match)) {
-                            $details = strip_tags(trim($details_match[1]));
-                        }
-
-                        $jobs[] = [
-                            'title' => $title,
-                            'details' => $details
-                        ];
-                    }
-                }
+        // Keyword-Matching im Titel/Beschreibung
+        $searchableText = strtolower($vacancy['title'] . ' ' . ($vacancy['anonymized_description'] ?? ''));
+        foreach ($userSkills as $userSkill) {
+            if (stripos($searchableText, $userSkill) !== false) {
+                $score += 3;
             }
         }
 
-        // Fallback: Wenn keine Jobs gefunden, verwende bekannte Positionen
-        if (empty($jobs)) {
-            error_log('⚠️ Keine Jobs via HTML-Parsing gefunden, verwende Fallback');
-            $jobs = [
-                ['title' => 'General Manager Europe', 'details' => 'Remote / Europa, Vollzeit'],
-                ['title' => 'Vertriebsmitarbeiter im Außendienst', 'details' => 'Kreis Düsseldorf, Vollzeit'],
-                ['title' => 'Software-Ingenieur Embedded Systems', 'details' => 'Neuss, Vollzeit'],
-                ['title' => 'Technischer Einkäufer', 'details' => 'Aachen, Vollzeit']
+        if ($score > 0) {
+            $matches[] = [
+                'vacancy' => $vacancy,
+                'score' => $score
             ];
         }
-
-        // Limitiere auf erste 5 Jobs
-        $jobs = array_slice($jobs, 0, 5);
-
-        $cache = $jobs;
-        $cache_time = time();
-
-        error_log('✅ Stellenangebote geladen: ' . count($jobs) . ' Jobs');
-        return $jobs;
-
-    } catch (Exception $e) {
-        error_log('⚠️ Fehler beim Fetchen der Stellenangebote: ' . $e->getMessage());
-        // Fallback
-        return [
-            ['title' => 'General Manager Europe', 'details' => 'Remote / Europa, Vollzeit'],
-            ['title' => 'Vertriebsmitarbeiter im Außendienst', 'details' => 'Kreis Düsseldorf, Vollzeit'],
-            ['title' => 'Software-Ingenieur Embedded Systems', 'details' => 'Neuss, Vollzeit'],
-            ['title' => 'Technischer Einkäufer', 'details' => 'Aachen, Vollzeit']
-        ];
     }
+
+    // Sortiere nach Score (höchste zuerst)
+    usort($matches, fn($a, $b) => $b['score'] <=> $a['score']);
+
+    // Gib Top 5 zurück
+    return array_slice(array_column($matches, 'vacancy'), 0, 5);
+}
+
+// ===== MATCHING: Finde passende Kandidaten für Unternehmen =====
+function findMatchingCandidates($userMessage, $candidates) {
+    if (empty($candidates)) {
+        return [];
+    }
+
+    $lower = strtolower($userMessage);
+    $matches = [];
+
+    // Extrahiere Skills aus User-Nachricht (Kunde beschreibt was er sucht)
+    $commonSkills = [
+        'php', 'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node',
+        'docker', 'kubernetes', 'aws', 'azure', 'devops', 'cloud', 'ci/cd',
+        'sql', 'mysql', 'postgresql', 'mongodb', 'redis',
+        'embedded', 'c++', 'c#', 'rust', 'golang', 'typescript',
+        'machine learning', 'ai', 'data science', 'big data',
+        'scrum', 'agile', 'kanban', 'project management'
+    ];
+
+    $requestedSkills = [];
+    foreach ($commonSkills as $skill) {
+        if (stripos($lower, $skill) !== false) {
+            $requestedSkills[] = strtolower($skill);
+        }
+    }
+
+    // Score jeden Kandidaten
+    foreach ($candidates as $candidate) {
+        $score = 0;
+        $candidateSkills = array_map('strtolower', $candidate['skills'] ?? []);
+
+        // Skill-Matching
+        foreach ($requestedSkills as $reqSkill) {
+            if (in_array($reqSkill, $candidateSkills)) {
+                $score += 10;
+            }
+        }
+
+        // Keyword-Matching im Profil
+        $searchableText = strtolower(($candidate['anonymized_profile'] ?? ''));
+        foreach ($requestedSkills as $reqSkill) {
+            if (stripos($searchableText, $reqSkill) !== false) {
+                $score += 5;
+            }
+        }
+
+        if ($score > 0) {
+            $matches[] = [
+                'candidate' => $candidate,
+                'score' => $score
+            ];
+        }
+    }
+
+    // Sortiere nach Score (höchste zuerst)
+    usort($matches, fn($a, $b) => $b['score'] <=> $a['score']);
+
+    // Gib Top 3 zurück
+    return array_slice(array_column($matches, 'candidate'), 0, 3);
 }
 
 function getRelevantContext($message) {
@@ -310,24 +391,22 @@ function buildContextInfo($context_type) {
   - Deutlich schnellere Besetzungsprozesse
   - Bessere Teampassung durch wissenschaftliche Analyse
 
-**👤 FÜR KANDIDATEN (kostenfrei):**
-• Karriereberatung mit wissenschaftlich fundiertem Test
-• KI Karrierecoach mit Persönlichkeitsanalyse
-• Kostenloser Persönlichkeitstest (10-15 Min, Big Five)
-• Zugang zum verdeckten Stellenmarkt
-• CV-Optimierung & Interview-Coaching
+**👤 FÜR KANDIDATEN:**
+• Zugang zu Stellenangeboten
+• Karriereberatung & Vermittlung
+• CV-Optimierung
 
 **🎯 SPEZIALISIERUNG:**
-• IT: Cloud-Architekten, DevOps, Cybersecurity, Software-Entwicklung (Java, Python, .NET), Data Science
-• Engineering: Maschinenbau, Automotive, E-Mobilität, Embedded Systems, Produktentwicklung",
+• IT & Engineering (Schwerpunkt): Cloud, DevOps, Software, Embedded, Automotive
+• HR & Recruiting: HR Business Partner, Talent Acquisition, People & Culture
+• Procurement & Supply Chain: Strategic Sourcing, Category Management
+• Finance & Controlling: FP&A, Business Controller, CFO-Positionen",
 
         'TALENTHUB_DETAIL' => "🚀 TALENTINTELLIGENCE HUB:
 
-Was ist das?
-KI-gestützte HR-Plattform auf Basis des wissenschaftlich validierten Big Five-Modells (OCEAN)
+KI-gestützte HR-Plattform auf Basis des Big Five-Modells (OCEAN)
 
-Kernfunktionen:
-• Persönlichkeits- und Kompetenzanalyse
+Kernfunktionen für Unternehmen:
 • Datenbasierte Talentidentifikation
 • Team-Optimierung und Zusammenstellung
 • Entwicklungspotenziale erkennen
@@ -335,11 +414,9 @@ Kernfunktionen:
 • HR-Analytics und Reporting
 
 Messbare Erfolge:
-• Signifikant weniger Fehlbesetzungen durch präzise Analyse
-• Deutlich schnellere Besetzungsprozesse
-• Bessere Teampassung durch Dynamik-Vorhersage
-
-Test unter: test.noba-experts.de (10-15 Minuten, kostenfrei)",
+• Weniger Fehlbesetzungen durch präzise Analyse
+• Schnellere Besetzungsprozesse
+• Bessere Teampassung durch Dynamik-Vorhersage",
 
         'EXECUTIVE_DETAIL' => "💼 EXECUTIVE SEARCH:
 
@@ -393,27 +470,26 @@ Bereiche:
 
 Prozess: KI-gestütztes Active Sourcing + etabliertes Netzwerk = Schnelle Ergebnisse",
 
-        'KANDIDATEN_DETAIL' => "🎯 FÜR KANDIDATEN (KOSTENFREI):
+        'KANDIDATEN_DETAIL' => "🎯 FÜR KANDIDATEN:
 
 Services:
-• Karriereberatung mit wissenschaftlich fundiertem Test
-• KI Karrierecoach: Persönlichkeitsanalyse + passende Karrierewege
-• Kostenloser Persönlichkeitstest (10-15 Min, Big Five-Modell)
-• Zugang zum verdeckten Stellenmarkt (viele Top-Positionen sind nicht öffentlich ausgeschrieben)
+• Zugang zu exklusiven Stellenangeboten
+• Professionelle Karriereberatung
+• Vermittlung in passende Positionen
 • CV-Optimierung & Interview-Coaching
 
 Prozess:
-1. Test starten auf test.noba-experts.de
-2. Big Five-Fragen beantworten (10-15 Min)
-3. Detaillierte Persönlichkeitsanalyse erhalten
-4. Maßgeschneiderte Karriereempfehlungen
-5. Zugang zu exklusiven Positionen
+1. Beraten lassen - welche Position passt zu Ihnen?
+2. Passende Stellen finden
+3. Bewerbungsunterlagen optimieren
+4. Interview-Vorbereitung
+5. Erfolgreiche Vermittlung
 
-Vorteil: Viele Top-Positionen werden NUR über NOBA besetzt (nicht öffentlich ausgeschrieben)",
+Vorteil: Viele Top-Positionen werden über NOBA besetzt (nicht öffentlich ausgeschrieben)",
 
         'BEREICHE_DETAIL' => "🔧 SPEZIALISIERUNGSBEREICHE:
 
-IT:
+IT (Schwerpunkt):
 • Cloud-Architekten (AWS, Azure, GCP)
 • DevOps-Engineers (CI/CD, Kubernetes)
 • Cybersecurity-Spezialisten
@@ -421,7 +497,7 @@ IT:
 • Data Science & ML Engineering
 • Frontend/Backend/Full-Stack Entwickler
 
-ENGINEERING:
+ENGINEERING (Schwerpunkt):
 • Maschinenbau & Elektrotechnik
 • Automotive & E-Mobilität
 • Embedded Systems & Firmware
@@ -429,8 +505,27 @@ ENGINEERING:
 • Manufacturing & Lean Production
 • Anlagenbau & Automatisierung
 
+HR & RECRUITING:
+• HR Business Partner
+• Talent Acquisition Manager
+• People & Culture Manager
+• Recruiting-Spezialisten
+• HR-Digitalisierung
+
+PROCUREMENT & SUPPLY CHAIN:
+• Strategic Sourcing Manager
+• Category Manager
+• Supply Chain Manager
+• Einkaufsleiter
+
+FINANCE & CONTROLLING:
+• Financial Planning & Analysis (FP&A)
+• Business Controller
+• CFO-Positionen
+• Treasury Manager
+
 MANAGEMENT:
-• C-Level (CTO, CIO, CEO, CFO)
+• C-Level (CTO, CIO, CEO, CFO, CHRO, CPO)
 • Interim Management
 • Projektmanagement (Agile, Scrum, PMP)
 • Change Management
@@ -492,29 +587,17 @@ Social Media:
 • LinkedIn: NOBA Experts GmbH
 • XING, Instagram, Twitter: @NOBA_Experts
 
-Für schnelle Anfragen: KI Karrieretest unter test.noba-experts.de",
+Für Anfragen: office@noba-experts.de oder +49 211 975 324 74",
 
         'BIGFIVE_DETAIL' => "🧠 BIG FIVE PERSÖNLICHKEITSMODELL (OCEAN):
 
-Was ist das?
-Wissenschaftlich validiertes Modell zur Persönlichkeitsanalyse, Basis des TalentIntelligence Hub
-
-5 Dimensionen:
-• Openness (Offenheit): Kreativität, Neugier
-• Conscientiousness (Gewissenhaftigkeit): Organisation, Zuverlässigkeit
-• Extraversion: Geselligkeit, Durchsetzungskraft
-• Agreeableness (Verträglichkeit): Teamfähigkeit, Empathie
-• Neuroticism (Neurotizismus): Emotionale Stabilität
-
-Anwendung bei NOBA:
-• Kandidaten-Assessment (10-15 Min Test)
+Das Big Five-Modell ist ein wissenschaftlich validiertes Persönlichkeitsmodell, das bei NOBA für:
 • Team-Kompatibilitäts-Analyse
 • Führungskräfte-Profiling
 • Entwicklungspotenzial-Erkennung
+eingesetzt wird.
 
-Test starten: test.noba-experts.de (kostenfrei, 10-15 Minuten)
-
-Wissenschaftlich validiert, in der Psychologie seit Jahrzehnten etabliert",
+Bei Interesse an einem Assessment: ai.noba-experts.de",
 
         'CV_OPTIMIERUNG_DETAIL' => "📄 CV-OPTIMIERUNG - KONKRETE TIPPS:
 
@@ -716,29 +799,29 @@ function generateQuickReplies($bot_response, $user_message, $history = []) {
         }
     }
 
-    // Job-Suche Kontext (Kandidat erkannt)
+    // Job-Suche Kontext (Kandidat erkannt) - FOKUS AUF RECRUITING!
     if (strpos($user_message_lower, 'job') !== false ||
         strpos($user_message_lower, 'stelle') !== false ||
         strpos($user_message_lower, 'karriere') !== false ||
         strpos($bot_response_lower, 'position') !== false ||
         strpos($bot_response_lower, 'jobsuche') !== false) {
 
-        // Nach zweiter Interaktion -> Erweiterte Optionen mit CV-Upload
+        // Nach zweiter Interaktion -> RECRUITING-FOKUSSIERTE Optionen
         if ($message_count >= 2) {
             return [
-                '📎 CV hochladen',
-                '📅 Kostenloses Beratungsgespräch',
                 '💼 Aktuelle Stellenangebote',
-                '🤖 KI-Persönlichkeitstest'
+                '📎 CV hochladen',
+                '📞 Rückruf anfordern',
+                'ℹ️ Mehr Infos'
             ];
         }
 
-        // Erste Interaktion: Bereich wählen + Option CV hochzuladen
+        // Erste Interaktion: Bereich wählen
         return [
             '💻 IT/Software',
             '⚙️ Engineering',
-            '☁️ Cloud/DevOps',
-            '📎 CV hochladen'
+            '👔 HR/Recruiting',
+            '📊 Finance/Procurement'
         ];
     }
 
@@ -873,7 +956,66 @@ function callGeminiAI($message, $history, $api_key, $model) {
     $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent?key=' . $api_key;
 
     // KOMPAKTER System-Prompt - Optimiert für Token-Limit
-    $system_prompt = "Du bist KI-Berater von NOBA Experts (IT & Engineering Recruiting, Düsseldorf).
+    $system_prompt = "Du bist Mina, die KI-gestützte Recruiterin und Kundenberaterin von NOBA Experts (IT & Engineering Recruiting, Düsseldorf).
+
+## DEINE PERSÖNLICHKEIT & HAUPTROLLE
+Als Mina bist du **IN ERSTER LINIE RECRUITERIN**:
+- **Nett und zugänglich**: Warmherzig und einladend im Tonfall
+- **SEHR professionell**: Kompetent, sachlich und auf den Punkt
+- **HAUPTFOKUS: RECRUITING** - Du vermittelst Jobs und Talente
+- **Für Kandidaten**: Finde passende Stellen, verstehe Skills & Wünsche, zeige Vakanzen
+- **Für Unternehmen**: Verstehe Bedarf, qualifiziere Anfragen, präsentiere passende Kandidatenprofile
+- **Seriös**: Keine übertriebene Lockerheit, aber freundlich
+- KI-gestützt (kann Fehler machen, daher keine verbindlichen Zusagen)
+
+## NEUE FUNKTIONEN (WICHTIG!)
+**VAKANZEN-DATENBANK:**
+- Du hast Zugriff auf aktuelle, anonymisierte Stellenangebote
+- Wenn Kandidaten nach Jobs fragen, zeige passende Vakanzen
+- Skills werden automatisch gematcht
+- Alle Stellenbeschreibungen sind DSGVO-konform anonymisiert (keine Firmennamen)
+
+**KANDIDATEN-DATENBANK:**
+- Du hast Zugriff auf anonymisierte Kandidatenprofile
+- Wenn Unternehmen nach Kandidaten fragen, zeige passende Profile
+- Alle Profile sind DSGVO-konform anonymisiert (keine Namen, Adressen, persönlichen Daten)
+- Erkläre immer, dass vollständige Unterlagen nach NDA verfügbar sind
+
+## TON & STIL
+- Höflich und respektvoll (immer \"Sie\")
+- Präzise und strukturiert
+- Freundlich ohne informell zu werden
+- Kompetent und vertrauenswürdig
+- Sachlich mit einer persönlichen Note
+- Stelle dich als \"Mina\" vor, wenn du deinen Namen verwendest
+- **FOKUS auf JOBS/STELLEN - nicht auf Zusatzservices!**
+
+**WICHTIG - SPRACHE**: Antworte IMMER in der Sprache, in der der User mit dir spricht! Wenn der User Englisch schreibt, antworte auf Englisch. Wenn der User Französisch schreibt, antworte auf Französisch. Passe dich automatisch an jede Sprache an, die der User verwendet.
+
+## ⚠️ WICHTIGE EINSCHRÄNKUNGEN
+
+**DATENSCHUTZ & DSGVO - KRITISCH:**
+**Du darfst NIEMALS Auskunft über existierende Bewerber, Kunden oder Leads geben!**
+- KEINE Auskunft ob eine E-Mail-Adresse registriert ist
+- KEINE Informationen über nicht-anonymisierte Daten
+- KEINE Prüfung ob jemand bereits im System ist
+- KEINE Angaben zu bestehenden Kontakten
+- KEINE Weitergabe von Daten an Dritte
+- Du hast KEINEN Zugriff auf interne Datenbanken oder Systeme
+- **ALLE Kandidatenprofile sind anonymisiert - erkläre das immer wenn du Profile zeigst**
+- Bei solchen Fragen: \"Aus Datenschutzgründen kann ich keine Auskunft über bestehende Kontakte geben. Für interne Anfragen wenden Sie sich bitte an unser Team.\"
+
+**DSGVO-HINWEIS:**
+- Bei Datenschutz-Fragen: \"Unsere Datenschutzerklärung finden Sie unter: https://www.noba-experts.de/Datenschutz.html\"
+- Sammle nur Daten die für die Beratung notwendig sind
+- Keine unnötigen persönlichen Fragen
+
+**VERBINDLICHKEIT:**
+**Du darfst NIEMALS verbindliche Deals, Verträge oder Zusagen abschließen!**
+- Keine Gehälter garantieren
+- Keine Vertragskonditionen festlegen
+- Keine rechtlich bindenden Vereinbarungen treffen
+- Verweise für finale Details immer an das menschliche Team
 
 ## MISSION
 Erkenne User-Typ PRÄZISE & qualifiziere:
@@ -886,7 +1028,12 @@ Erkenne User-Typ PRÄZISE & qualifiziere:
 - ARBEITGEBER: Position? Tech-Stack? Teamgröße? Dringlichkeit?
   → **WICHTIG**: Nach 2-3 Nachrichten höflich nach Name & E-Mail fragen!
   → Formulierung: 'Damit ich Sie optimal beraten kann, dürfte ich Ihren Namen und E-Mail erfahren?'
-- KANDIDAT: Aktueller Job? Skills? Wechselgrund?
+- KANDIDAT: **FOKUS auf JOB-VERMITTLUNG!**
+  → Welche Position/Rolle interessiert Sie? (Frontend, Backend, DevOps, etc.)
+  → Welche Technologien/Skills haben Sie?
+  → Standortwünsche? Remote/Vor Ort?
+  → Wann sind Sie verfügbar?
+  → **NICHT sofort Karrierecoaching oder Zusatzservices anbieten!**
   → Nach 3-4 Nachrichten optional nach Kontaktdaten fragen
 - INFO-ANFRAGE: Konkret antworten mit Details!
 
@@ -902,7 +1049,7 @@ Erkenne User-Typ PRÄZISE & qualifiziere:
 - Betone: **Persönlicher Kontakt VOR Suchstart**
 
 **Bei KANDIDATEN** (nach 3-4 Nachrichten, optional):
-- 'Für eine persönliche Karriereberatung benötige ich Ihre E-Mail. Einverstanden?'
+- 'Um Sie optimal bei der Jobsuche zu unterstützen und passende Stellen vorzuschlagen, benötige ich Ihre E-Mail. Einverstanden?'
 
 ## CV-ANALYSE (wenn Dokument hochgeladen)
 Wenn User CV/Lebenslauf hochlädt, gib STRUKTURIERTES Feedback:
@@ -942,10 +1089,24 @@ WICHTIG: Nutze genau diese Struktur mit Emojis und Bulletpoints!
 - Stattdessen nutze **vage, professionelle Formulierungen**: 'viele', 'die meisten', 'ein Großteil', 'erheblich', 'signifikant', 'deutlich'
 - **Vermeide übertriebene Claims** - bleibe seriös und zurückhaltend
 
-## LEISTUNGEN
-**Unternehmen:** Executive Search, Projektbesetzung (2-4 Wochen), Team Building, TalentIntelligence Hub (KI-Matching, hohe Kulturpassung)
-**Kandidaten (kostenfrei):** Karriereberatung, Zugang zum verdeckten Stellenmarkt (viele Top-Positionen nicht öffentlich), KI-Coach (test.noba-experts.de)
-**Bereiche:** IT (Cloud, DevOps, Software), Engineering (Automotive, Embedded)
+## LEISTUNGEN (KURZ HALTEN!)
+**Unternehmen:** Executive Search, Projektbesetzung, Team Building
+**Kandidaten:** Zugang zu Stellenangeboten, Karriereberatung
+**Bereiche:** IT & Engineering (Schwerpunkt), HR, Procurement, Finance
+
+## ⚠️ KI-KARRIERECOACH (NUR BEI EXPLIZITEM BEDARF!)
+**KRITISCH**: Erwähne KI-Karrierecoach/Persönlichkeitstest NIEMALS sofort oder in ersten Antworten!
+**NUR erwähnen wenn Kandidat:**
+- Explizit nach Karriereentwicklung/Coaching fragt
+- Sagt \"Ich weiß nicht, welcher Job zu mir passt\"
+- Nach Tests/Tools für Karriereplanung fragt
+- Nach mehreren Nachrichten immer noch unsicher über Karriereweg ist
+
+**Dann KURZ erwähnen:**
+- Persönlichkeitstest (Big Five) - Auswertung inklusive
+- Premium-Beratung (39€/Monat): KI-Karriereberater
+- Link: ai.noba-experts.de
+- KEINE Werbung! KEINE Details! Kurz & sachlich!
 
 ## KONTAKT (nach Qualifizierung)
 Tel: +49 211 975 324 74
@@ -962,13 +1123,16 @@ Bot: \"Welche Cloud-Plattform nutzen Sie und wie groß ist Ihr Team?\"
 User: \"Frau Huiso, dasoldal@exacde.de\"
 Bot: \"Vielen Dank, Frau Huiso! Ich habe alle wichtigen Informationen notiert. Unser Team wird sich in Kürze persönlich telefonisch bei Ihnen melden, um die nächsten Schritte zu besprechen und den Suchprozess gemeinsam mit Ihnen zu planen. Haben Sie in der Zwischenzeit noch Fragen?\"
 
-## BEISPIELE - KANDIDAT
+## BEISPIELE - KANDIDAT (RECRUITING-FOKUS!)
 User: \"Ich suche einen Job\"
-Bot: \"Gerne helfe ich Ihnen! In welchem Bereich suchen Sie (IT oder Engineering) und welche Rolle interessiert Sie?\"
+Bot: \"Gerne helfe ich Ihnen bei der Jobsuche! In welchem Bereich suchen Sie - IT oder Engineering? Welche Art von Position interessiert Sie?\"
+
+User: \"IT, Backend-Entwickler\"
+Bot: \"Super! Mit welchen Technologien arbeiten Sie hauptsächlich? Und haben Sie Präferenzen beim Standort oder Remote-Arbeit?\"
 
 ## BEISPIELE - INFO
 User: \"Welche Leistungen?\"
-Bot: \"Wir bieten: Executive Search, Projektbesetzung (2-4 Wochen), Team Building und TalentIntelligence Hub mit hoher Kulturpassung. Für Kandidaten kostenfrei: Karriereberatung, Zugang zum verdeckten Stellenmarkt, KI-Coach. Interessiert Sie ein Bereich?\"
+Bot: \"Wir unterstützen Unternehmen bei Executive Search und Projektbesetzung. Für Kandidaten bieten wir Zugang zu Stellenangeboten und Karriereberatung. Suchen Sie einen Job oder Mitarbeiter?\"
 
 Ziel: Leads generieren durch strukturierte Gespräche.";
 
@@ -1101,19 +1265,38 @@ try {
     $context_type = getRelevantContext($user_message);
     $enriched_message = $user_message;
 
-    // SPEZIALBEHANDLUNG: Aktuelle Stellenangebote
+    // SPEZIALBEHANDLUNG: Aktuelle Stellenangebote & Matching
+    $vacancies = fetchCurrentVacancies();
+    $candidates = fetchCandidateProfiles();
+
+    // KANDIDAT FRAGT NACH JOBS
     if (stripos($user_message, 'Aktuelle Stellenangebote') !== false ||
         stripos($user_message, 'Aktuelle Stellen') !== false ||
         stripos($user_message, '💼 Aktuelle Stellenangebote') !== false ||
-        stripos($user_message, '💼 Aktuelle Stellen') !== false) {
+        stripos($user_message, '💼 Aktuelle Stellen') !== false ||
+        stripos($user_message, 'job') !== false ||
+        stripos($user_message, 'stelle') !== false) {
 
-        $jobs = fetchCurrentJobs();
-        if ($jobs && count($jobs) > 0) {
-            $jobs_text = "AKTUELLE STELLENANGEBOTE (Auszug):\n\n";
-            foreach ($jobs as $idx => $job) {
+        // Versuche Matching basierend auf User-Message
+        $matchedVacancies = findMatchingVacancies($user_message, $vacancies);
+
+        $jobsToShow = !empty($matchedVacancies) ? $matchedVacancies : array_slice($vacancies, 0, 5);
+
+        if ($jobsToShow && count($jobsToShow) > 0) {
+            $jobs_text = !empty($matchedVacancies)
+                ? "PASSENDE STELLENANGEBOTE FÜR IHRE SKILLS:\n\n"
+                : "AKTUELLE STELLENANGEBOTE (Auszug):\n\n";
+
+            foreach ($jobsToShow as $idx => $job) {
                 $jobs_text .= "🔹 " . $job['title'];
-                if (!empty($job['details'])) {
-                    $jobs_text .= "\n   📍 " . $job['details'];
+                if (!empty($job['location'])) {
+                    $jobs_text .= "\n   📍 " . $job['location'];
+                }
+                if (!empty($job['experience_level'])) {
+                    $jobs_text .= " | Level: " . $job['experience_level'];
+                }
+                if (!empty($job['required_skills'])) {
+                    $jobs_text .= "\n   💡 Skills: " . implode(', ', array_slice($job['required_skills'], 0, 5));
                 }
                 $jobs_text .= "\n\n";
             }
@@ -1121,7 +1304,60 @@ try {
 
             // Injiziere Jobs als Context
             $enriched_message = "[CONTEXT-INFO: Der User möchte aktuelle Stellenangebote sehen. Präsentiere folgende Jobs freundlich und professionell:\n\n" . $jobs_text . "\n\nERWARTET: Präsentiere die Jobs übersichtlich, betone dass dies nur ein Auszug ist, und frage welche Position interessiert oder ob der User mehr erfahren möchte.]\n\nUser-Frage: " . $user_message;
-            error_log('✨ Stellenangebote injiziert: ' . count($jobs) . ' Jobs');
+            error_log('✨ Stellenangebote injiziert: ' . count($jobsToShow) . ' Vakanzen');
+        }
+    }
+    // KUNDE FRAGT NACH KANDIDATEN
+    elseif (stripos($user_message, 'kandidat') !== false ||
+            stripos($user_message, 'bewerber') !== false ||
+            stripos($user_message, 'mitarbeiter') !== false && (stripos($user_message, 'such') !== false || stripos($user_message, 'brauche') !== false)) {
+
+        // Versuche Matching basierend auf User-Message
+        $matchedCandidates = findMatchingCandidates($user_message, $candidates);
+
+        $candidatesToShow = !empty($matchedCandidates) ? $matchedCandidates : array_slice($candidates, 0, 3);
+
+        if ($candidatesToShow && count($candidatesToShow) > 0) {
+            $candidates_text = !empty($matchedCandidates)
+                ? "PASSENDE KANDIDATENPROFILE FÜR IHRE ANFORDERUNGEN:\n\n"
+                : "VERFÜGBARE KANDIDATENPROFILE (Auszug - ANONYMISIERT):\n\n";
+
+            foreach ($candidatesToShow as $idx => $candidate) {
+                $candidates_text .= "👤 KANDIDAT #" . ($idx + 1);
+                if (!empty($candidate['seniority_level'])) {
+                    $candidates_text .= " (" . $candidate['seniority_level'] . ")";
+                }
+                $candidates_text .= "\n";
+
+                if (!empty($candidate['experience_years'])) {
+                    $candidates_text .= "   🎯 Erfahrung: " . $candidate['experience_years'] . " Jahre\n";
+                }
+
+                if (!empty($candidate['skills'])) {
+                    $candidates_text .= "   💡 Skills: " . implode(', ', array_slice($candidate['skills'], 0, 8)) . "\n";
+                }
+
+                if (!empty($candidate['location'])) {
+                    $candidates_text .= "   📍 Region: " . $candidate['location'] . "\n";
+                }
+
+                if (!empty($candidate['availability'])) {
+                    $candidates_text .= "   ⏰ Verfügbarkeit: " . $candidate['availability'] . "\n";
+                }
+
+                // Gekürzte Profil-Beschreibung (erste 150 Zeichen)
+                if (!empty($candidate['anonymized_profile'])) {
+                    $profile_preview = mb_substr($candidate['anonymized_profile'], 0, 150) . '...';
+                    $candidates_text .= "   📝 " . $profile_preview . "\n";
+                }
+
+                $candidates_text .= "\n";
+            }
+            $candidates_text .= "⚠️ WICHTIG: Alle Profile sind DSGVO-konform anonymisiert. Bei Interesse erhalten Sie vollständige Unterlagen nach Unterzeichnung einer Vertraulichkeitsvereinbarung.";
+
+            // Injiziere Kandidaten als Context
+            $enriched_message = "[CONTEXT-INFO: Der User (Kunde/Unternehmen) sucht Kandidaten. Präsentiere folgende anonymisierte Profile professionell:\n\n" . $candidates_text . "\n\nERWARTET: Präsentiere die Kandidaten übersichtlich, erkläre dass alle Profile anonymisiert sind (DSGVO), und frage welches Profil interessiert oder ob mehr Details gewünscht sind.]\n\nUser-Frage: " . $user_message;
+            error_log('✨ Kandidatenprofile injiziert: ' . count($candidatesToShow) . ' Profile');
         }
     }
     // Normale Context-Injektion
@@ -1185,13 +1421,14 @@ try {
     ]);
 }
 
-// ===== OPTIONAL: HUBSPOT INTEGRATION =====
-// Kann hier auch direkt Leads speichern statt über JavaScript
-function saveToHubSpot($data) {
-    global $CONFIG;
-
-    $url = 'https://api-eu1.hsforms.com/submissions/v3/integration/submit/'
-         . $CONFIG['HUBSPOT_PORTAL_ID'] . '/' . $CONFIG['HUBSPOT_FORM_ID'];
+// ===== HUBSPOT INTEGRATION DEAKTIVIERT =====
+// ⚠️ WICHTIG: Chatbot darf NICHT auf HubSpot zugreifen (Datenschutz!)
+// HubSpot-Zugriff nur über admin-api.php mit JWT-Authentifizierung
+// Diese Funktion ist DEAKTIVIERT und wird NICHT verwendet!
+function saveToHubSpot_DISABLED($data) {
+    // DEAKTIVIERT - Nicht verwenden!
+    error_log('[SECURITY] saveToHubSpot ist deaktiviert. Verwende admin-api.php');
+    return false;
 
     // HubSpot API Call...
 }
