@@ -597,6 +597,32 @@ export const App = () => {
       return;
     }
 
+    // Stellenbeschreibung hochladen (für Kandidaten-Matching) → Upload-Dialog öffnen
+    if (option.includes('Stellenbeschreibung hochladen')) {
+      setUploadDocumentType('job_matching');
+      setIsUploadOpen(true);
+      setChatMessages((prev: ChatMessage[]) => {
+        const userSelection: ChatMessage = {
+          id: `user-${crypto.randomUUID?.() ?? Date.now().toString(36)}`,
+          role: AuthorRole.USER,
+          text: option,
+          timestamp: new Date().toISOString(),
+        };
+        const next = [...prev, userSelection];
+        conversationRef.current = next;
+
+        // Log immediately
+        loggerService.logConversation({
+          messages: next,
+          sessionId,
+          documentContext: documentContextRef.current ?? undefined,
+        }).catch(err => console.info('[logger] could not log', err));
+
+        return next;
+      });
+      return;
+    }
+
     await handleUserMessage(option, option);
   };
 
@@ -607,35 +633,49 @@ export const App = () => {
     setUploadStatus({ variant: 'loading', message: 'Dokument wird analysiert …' });
     setIsUploadOpen(false); // Close upload modal
 
-    // Erkenne Upload-Typ korrekt (cv ODER cv_matching = CV, sonst Stellenbeschreibung)
-    const isCV = uploadDocumentType === 'cv' || uploadDocumentType === 'cv_matching';
-    
-    // User-Message mit File-Info anzeigen
-    const userMessage: ChatMessage = createUserMessage(
-      isCV
-        ? `📄 CV hochgeladen: ${file.name}. Welche Stellen passen zu mir?`
-        : `📄 Stellenbeschreibung hochgeladen: ${file.name}. Welche Kandidaten passen?`
-    );
-    
-    setChatMessages((prev: ChatMessage[]) => {
-      const next = [...prev, userMessage];
-      conversationRef.current = next;
-      return next;
-    });
-
     try {
-      // NEU: Sende File direkt mit Chat-Message
+      // Bestimme Upload-Kontext basierend auf uploadDocumentType
+      const uploadContext: 'cv_upload' | 'job_description' | 'project_analysis' = 
+        uploadDocumentType === 'cv_matching' ? 'cv_upload' :
+        uploadDocumentType === 'job_matching' ? 'job_description' :
+        uploadDocumentType === 'project' ? 'project_analysis' :
+        'job_description'; // Default: Stellenbeschreibung für Kunden
+      
+      console.log('[upload] 🎯 Upload context:', uploadContext);
+      
+      // Sende File an Backend mit korrektem Kontext
       setIsTyping(true);
       const response = await chatService.sendMessage({
-        message: isCV
-          ? 'Ich habe meinen CV hochgeladen. Welche offenen Stellen passen zu meinem Profil?'
-          : 'Ich habe eine Stellenbeschreibung hochgeladen. Welche Kandidaten passen dazu?',
+        message: '', // Leere Message - Backend analysiert nur das Dokument
         history: conversationRef.current,
         sessionId,
-        file: file,  // File mit Chat-Message senden
+        file: file,
+        uploadContext, // NEU: Teile dem Backend mit, was hochgeladen wird
       });
 
       console.log('[upload] ✅ Response received:', response);
+      
+      // Erkenne Upload-Typ aus Backend-Response (Backend ist intelligenter!)
+      const detectedType = response.document_type || uploadDocumentType || 'unknown';
+      const isCV = detectedType === 'cv' || detectedType === 'cv_matching' || uploadContext === 'cv_upload';
+      const isProject = detectedType === 'project' || uploadContext === 'project_analysis';
+      
+      console.log('[upload] 🎯 Detected document type:', detectedType, 'isCV:', isCV, 'isProject:', isProject);
+      
+      // User-Message mit korrektem Typ anzeigen
+      const userMessage: ChatMessage = createUserMessage(
+        isCV
+          ? `📄 CV hochgeladen: ${file.name}. Welche Stellen passen zu mir?`
+          : isProject
+          ? `📄 Projektbeschreibung hochgeladen: ${file.name}. Welche Ressourcen werden benötigt?`
+          : `📄 Stellenbeschreibung hochgeladen: ${file.name}. Welche Kandidaten passen?`
+      );
+      
+      setChatMessages((prev: ChatMessage[]) => {
+        const next = [...prev, userMessage];
+        conversationRef.current = next;
+        return next;
+      });
 
       // Bot-Antwort manuell erstellen und hinzufügen
       const botMessage = createBotMessage(

@@ -111,6 +111,7 @@ export interface ChatResponsePayload {
   lead_signals?: LeadSignals;
   error?: string;
   status?: string;
+  document_type?: 'cv' | 'job_description' | 'project' | 'unknown';  // Erkannter Dokumenttyp vom Backend
 }
 
 export interface LoggerRequestPayload {

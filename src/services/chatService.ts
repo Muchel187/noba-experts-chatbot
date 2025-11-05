@@ -39,6 +39,7 @@ interface SendMessageOptions {
   isDocumentSummary?: boolean;
   quickReplyUsed?: string;
   file?: File; // NEU: Optional file upload
+  uploadContext?: 'cv_upload' | 'job_description' | 'project_analysis'; // NEU: Kontext für File-Uploads
 }
 
 export const chatService = {
@@ -51,6 +52,11 @@ export const chatService = {
       formData.append('message', options.message);
       formData.append('session_id', options.sessionId);
       formData.append('history', JSON.stringify(mapMessagesToHistory(options.history)));
+      
+      // NEU: Upload-Kontext hinzufügen
+      if (options.uploadContext) {
+        formData.append('upload_context', options.uploadContext);
+      }
       
       if (options.documentContext) {
         formData.append('document_context', JSON.stringify(formatDocumentContext(options.documentContext)));
