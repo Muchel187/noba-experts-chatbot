@@ -1,0 +1,72 @@
+# LEBENSLAUF - Max Mustermann
+
+## Persönliche Daten
+- Name: Max Mustermann
+- E-Mail: max.mustermann@example.com
+- Telefon: +49 211 123456
+- Wohnort: Neuss
+
+## Berufserfahrung
+
+### Senior PHP Developer | Tech GmbH Düsseldorf
+*Jan 2020 - Heute*
+
+- Entwicklung von E-Commerce-Plattformen mit Laravel und Symfony
+- Implementierung von RESTful APIs und Microservices
+- Docker & Kubernetes für Container-Orchestrierung
+- MySQL, PostgreSQL, Redis für Datenbankmanagement
+- CI/CD Pipelines mit GitLab und Jenkins
+- Agile Entwicklung mit Scrum
+
+### PHP Developer | Web Solutions AG
+*Jun 2017 - Dez 2019*
+
+- Full-Stack Entwicklung mit PHP, JavaScript, React
+- MySQL Datenbankdesign und -optimierung
+- Linux Server Administration
+- Code Reviews und Mentoring von Junior Entwicklern
+
+## Technische Skills
+
+**Backend:**
+- PHP (10+ Jahre)
+- Laravel, Symfony, CodeIgniter
+- MySQL, PostgreSQL, MongoDB
+- RESTful API Design
+- Microservices Architecture
+
+**Frontend:**
+- JavaScript (ES6+)
+- React, Vue.js
+- HTML5, CSS3, Sass
+- TypeScript
+
+**DevOps:**
+- Docker, Kubernetes
+- CI/CD (GitLab CI, Jenkins)
+- AWS (EC2, S3, RDS, Lambda)
+- Linux Server Administration
+- Nginx, Apache
+
+**Weitere:**
+- Git, GitHub, GitLab
+- Agile/Scrum
+- Unit Testing (PHPUnit)
+- Redis, Elasticsearch
+- API-Integration (Payment, CRM, ERP)
+
+## Ausbildung
+
+**Bachelor of Science - Informatik**
+Technische Universität, 2013-2017
+
+## Sprachen
+
+- Deutsch: Muttersprache
+- Englisch: Fließend in Wort und Schrift
+
+## Verfügbarkeit
+
+Sofort verfügbar für Festanstellung oder Freelance-Projekte
+Vollzeit bevorzugt, Teilzeit möglich
+Remote oder Hybrid (Raum Düsseldorf/Neuss)

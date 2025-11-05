@@ -1,1 +1,65 @@
-[]
+[
+  {
+    "id": "cand_test_php_senior",
+    "anonymized_profile": "Senior PHP Developer mit 7 Jahren Erfahrung in der Entwicklung von Web-Anwendungen. Umfangreiche Kenntnisse in Laravel, Symfony und modernen JavaScript-Frameworks. Erfahrung in der Leitung von Entwicklungsteams und Code Reviews. Sucht neue Herausforderungen im Raum Düsseldorf/Köln.",
+    "skills": ["PHP", "Laravel", "Symfony", "MySQL", "JavaScript", "React", "Vue.js", "Docker", "Git", "REST APIs"],
+    "experience_years": 7,
+    "seniority_level": "Senior",
+    "industries": ["E-Commerce", "FinTech", "SaaS"],
+    "location": "Raum Düsseldorf",
+    "availability": "Vollzeit",
+    "languages": ["Deutsch (Muttersprache)", "Englisch (Fließend)"],
+    "key_qualifications": [
+      "7+ Jahre PHP Entwicklung",
+      "Team Lead Erfahrung",
+      "Agile/Scrum Methodiken",
+      "CI/CD Expertise"
+    ],
+    "created_at": "2025-01-05T10:00:00+00:00",
+    "updated_at": "2025-01-05T10:00:00+00:00",
+    "original_filename": "Testdaten",
+    "status": "available"
+  },
+  {
+    "id": "cand_test_embedded_mid",
+    "anonymized_profile": "Embedded Software Engineer mit 5 Jahren Erfahrung in der Automobilindustrie. Spezialisiert auf Firmware-Entwicklung für Mikrocontroller und Echtzeit-Betriebssysteme. Fundierte Kenntnisse in C/C++ und Hardware-naherprogrammierung. Standort flexibel im Raum Neuss/Aachen.",
+    "skills": ["C", "C++", "Embedded C", "Firmware", "Mikrocontroller", "RTOS", "CAN-Bus", "AUTOSAR", "Git", "Linux"],
+    "experience_years": 5,
+    "seniority_level": "Mid",
+    "industries": ["Automotive", "Elektronik", "Industrie 4.0"],
+    "location": "Raum Neuss/Aachen",
+    "availability": "Vollzeit",
+    "languages": ["Deutsch (Muttersprache)", "Englisch (Gut)"],
+    "key_qualifications": [
+      "5 Jahre Embedded Entwicklung",
+      "Automotive Standards",
+      "Hardware-nahe Programmierung",
+      "Debugging & Testing"
+    ],
+    "created_at": "2025-01-05T10:00:00+00:00",
+    "updated_at": "2025-01-05T10:00:00+00:00",
+    "original_filename": "Testdaten",
+    "status": "available"
+  },
+  {
+    "id": "cand_test_devops_expert",
+    "anonymized_profile": "DevOps Engineer mit 8 Jahren Erfahrung in Cloud-Infrastruktur und Container-Orchestrierung. Expertise in AWS, Kubernetes und Infrastructure as Code. Hat mehrere Unternehmen bei der Cloud-Migration begleitet. Arbeitet bevorzugt remote, kann aber auch vor Ort in Berlin arbeiten.",
+    "skills": ["AWS", "Kubernetes", "Docker", "Terraform", "Ansible", "Python", "CI/CD", "Jenkins", "GitLab", "Monitoring", "Linux"],
+    "experience_years": 8,
+    "seniority_level": "Expert",
+    "industries": ["FinTech", "SaaS", "E-Commerce"],
+    "location": "Remote / Berlin",
+    "availability": "Vollzeit",
+    "languages": ["Deutsch (Muttersprache)", "Englisch (Verhandlungssicher)"],
+    "key_qualifications": [
+      "8+ Jahre DevOps Erfahrung",
+      "AWS Certified Solutions Architect",
+      "Kubernetes CKA Zertifikat",
+      "Multi-Cloud Expertise"
+    ],
+    "created_at": "2025-01-05T10:00:00+00:00",
+    "updated_at": "2025-01-05T10:00:00+00:00",
+    "original_filename": "Testdaten",
+    "status": "available"
+  }
+]

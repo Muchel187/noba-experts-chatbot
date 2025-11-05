@@ -1,1 +1,68 @@
-[]
+[
+  {
+    "id": "vac_test_neuss_embedded",
+    "title": "Software-Ingenieur Embedded Systems (m/w/d)",
+    "anonymized_description": "Für ein innovatives Technologie-Unternehmen im Raum Neuss suchen wir einen erfahrenen Software-Ingenieur für Embedded Systems. Sie entwickeln Firmware und Software für moderne Embedded-Systeme in der Automobilindustrie.",
+    "required_skills": ["C", "C++", "Embedded", "Firmware", "Mikrocontroller", "Linux"],
+    "nice_to_have_skills": ["Python", "CAN-Bus", "AUTOSAR", "Git"],
+    "experience_level": "Mid",
+    "location": "Neuss",
+    "salary_range": "55.000-75.000 EUR",
+    "employment_type": "Festanstellung",
+    "remote_option": "Hybrid",
+    "key_responsibilities": [
+      "Entwicklung von Embedded Software",
+      "Firmware-Programmierung",
+      "Test und Debugging",
+      "Technische Dokumentation"
+    ],
+    "created_at": "2025-01-05T10:00:00+00:00",
+    "updated_at": "2025-01-05T10:00:00+00:00",
+    "original_filename": "Testdaten",
+    "status": "active"
+  },
+  {
+    "id": "vac_test_dd_php_dev",
+    "title": "Senior PHP Developer (m/w/d)",
+    "anonymized_description": "Für einen wachsenden Kunden im Raum Düsseldorf suchen wir einen Senior PHP Developer. Sie arbeiten an modernen Web-Anwendungen mit Laravel und React.",
+    "required_skills": ["PHP", "Laravel", "MySQL", "JavaScript", "React", "Docker"],
+    "nice_to_have_skills": ["Vue.js", "Redis", "AWS", "CI/CD"],
+    "experience_level": "Senior",
+    "location": "Düsseldorf",
+    "salary_range": "65.000-85.000 EUR",
+    "employment_type": "Festanstellung",
+    "remote_option": "Hybrid",
+    "key_responsibilities": [
+      "Backend-Entwicklung mit PHP/Laravel",
+      "API-Design und Implementierung",
+      "Code Reviews und Mentoring",
+      "Performance-Optimierung"
+    ],
+    "created_at": "2025-01-05T10:00:00+00:00",
+    "updated_at": "2025-01-05T10:00:00+00:00",
+    "original_filename": "Testdaten",
+    "status": "active"
+  },
+  {
+    "id": "vac_test_remote_devops",
+    "title": "DevOps Engineer (m/w/d)",
+    "anonymized_description": "Für einen innovativen Tech-Kunden suchen wir einen DevOps Engineer. Die Position ist vollständig remote möglich.",
+    "required_skills": ["Docker", "Kubernetes", "AWS", "Terraform", "CI/CD", "Linux"],
+    "nice_to_have_skills": ["Python", "Ansible", "GitLab", "Monitoring"],
+    "experience_level": "Mid",
+    "location": "Remote",
+    "salary_range": "60.000-80.000 EUR",
+    "employment_type": "Festanstellung",
+    "remote_option": "Ja",
+    "key_responsibilities": [
+      "CI/CD Pipeline Entwicklung",
+      "Kubernetes Cluster Management",
+      "Infrastructure as Code",
+      "Monitoring und Alerting"
+    ],
+    "created_at": "2025-01-05T10:00:00+00:00",
+    "updated_at": "2025-01-05T10:00:00+00:00",
+    "original_filename": "Testdaten",
+    "status": "active"
+  }
+]

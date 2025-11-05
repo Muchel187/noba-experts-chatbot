@@ -44,6 +44,14 @@ const createSystemMessage = (text: string, metadata?: ChatMessage['metadata']): 
   metadata,
 });
 
+const createUserMessage = (text: string, metadata?: ChatMessage['metadata']): ChatMessage => ({
+  id: `user-${crypto.randomUUID?.() ?? Date.now().toString(36)}`,
+  role: AuthorRole.USER,
+  text,
+  timestamp: new Date().toISOString(),
+  metadata,
+});
+
 const trimText = (text: string, limit = 1500) => (text.length > limit ? `${text.slice(0, limit)}…` : text);
 
 const buildDocumentSummaryPrompt = (context: DocumentContext) => {
@@ -597,7 +605,95 @@ export const App = () => {
 
     setIsUploading(true);
     setUploadStatus({ variant: 'loading', message: 'Dokument wird analysiert …' });
+    setIsUploadOpen(false); // Close upload modal
 
+    // Erkenne Upload-Typ korrekt (cv ODER cv_matching = CV, sonst Stellenbeschreibung)
+    const isCV = uploadDocumentType === 'cv' || uploadDocumentType === 'cv_matching';
+    
+    // User-Message mit File-Info anzeigen
+    const userMessage: ChatMessage = createUserMessage(
+      isCV
+        ? `📄 CV hochgeladen: ${file.name}. Welche Stellen passen zu mir?`
+        : `📄 Stellenbeschreibung hochgeladen: ${file.name}. Welche Kandidaten passen?`
+    );
+    
+    setChatMessages((prev: ChatMessage[]) => {
+      const next = [...prev, userMessage];
+      conversationRef.current = next;
+      return next;
+    });
+
+    try {
+      // NEU: Sende File direkt mit Chat-Message
+      setIsTyping(true);
+      const response = await chatService.sendMessage({
+        message: isCV
+          ? 'Ich habe meinen CV hochgeladen. Welche offenen Stellen passen zu meinem Profil?'
+          : 'Ich habe eine Stellenbeschreibung hochgeladen. Welche Kandidaten passen dazu?',
+        history: conversationRef.current,
+        sessionId,
+        file: file,  // File mit Chat-Message senden
+      });
+
+      console.log('[upload] ✅ Response received:', response);
+
+      // Bot-Antwort manuell erstellen und hinzufügen
+      const botMessage = createBotMessage(
+        response.reply || response.message || 'Dokument wurde analysiert.',
+        { quickReplies: response.quick_replies }
+      );
+
+      setChatMessages((prev: ChatMessage[]) => {
+        const next = [...prev, botMessage];
+        conversationRef.current = next;
+        return next;
+      });
+
+      // Quick Replies setzen
+      if (response.quick_replies && response.quick_replies.length > 0) {
+        console.log('✅ Setting quick replies:', response.quick_replies);
+        setNewQuickReplies(response.quick_replies);
+      }
+
+      // Lead-Profil aktualisieren
+      if (response.extracted_data) {
+        updateLeadProfile(normalizeLeadProfile(response.extracted_data));
+      }
+
+      setUploadStatus({ variant: 'success', message: 'Dokument erfolgreich verarbeitet' });
+      
+      // Log conversation
+      await loggerService.logConversation({
+        messages: conversationRef.current,
+        sessionId,
+        documentContext: documentContextRef.current ?? undefined,
+      }).catch(err => console.info('[logger] could not log', err));
+
+    } catch (uploadError: any) {
+      console.error('[upload] Fehler:', uploadError);
+      
+      const errorMessage = createBotMessage(
+        'Entschuldigung, beim Verarbeiten des Dokuments ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut oder kontaktieren Sie uns direkt.'
+      );
+      
+      setChatMessages((prev: ChatMessage[]) => {
+        const next = [...prev, errorMessage];
+        conversationRef.current = next;
+        return next;
+      });
+      
+      setUploadStatus({ 
+        variant: 'error', 
+        message: uploadError.message ?? 'Upload fehlgeschlagen' 
+      });
+    } finally {
+      setIsUploading(false);
+      setIsTyping(false);
+    }
+
+    return; // Skip old code below
+
+    // === AB HIER: ALTER CODE (wird nicht mehr erreicht) ===
     try {
       const uploadResult = await uploadService.uploadDocument({
         file,
@@ -623,31 +719,129 @@ export const App = () => {
       setDocumentContext(context);
       setUploadStatus({ variant: 'success', message: `${context.filename} erfolgreich analysiert.` });
       setIsUploadOpen(false);
+      
+      // System-Nachricht für Upload
       const systemMessage = createSystemMessage(
         `📄 Dokument "${context.filename}" wurde hochgeladen und in die Beratung übernommen.`,
       );
-      setChatMessages((prev: ChatMessage[]) => {
-        const next = [...prev, systemMessage];
-        conversationRef.current = next;
-
-        // Log document upload immediately
-        loggerService.logConversation({
-          messages: next,
-          sessionId,
-          documentContext: context,
-        }).catch(err => console.info('[logger] could not log document upload', err));
-
-        return next;
-      });
+      
+      setChatMessages((prev: ChatMessage[]) => [...prev, systemMessage]);
 
       if (context.contactData) {
         updateLeadProfile(context.contactData);
+      }
+
+      // ===== AUTOMATISCHES MATCHING =====
+      const matchingResults = (data as any).matching_results;
+      
+      if (matchingResults && matchingResults.count > 0) {
+        // Zeige Matching-Ergebnisse sofort an
+        let matchingMessage = '';
+        
+        if (matchingResults.type === 'jobs') {
+          matchingMessage = `🎯 Basierend auf Ihrem CV habe ich ${matchingResults.count} passende Stellenangebote gefunden:\n\n`;
+          matchingResults.matches.forEach((job: any, idx: number) => {
+            matchingMessage += `${idx + 1}. **${job.title}**\n`;
+            matchingMessage += `   📍 ${job.location} | 🎓 ${job.experience_level}\n`;
+            if (job.skills && job.skills.length > 0) {
+              matchingMessage += `   💡 Skills: ${job.skills.join(', ')}\n`;
+            }
+            matchingMessage += `\n`;
+          });
+          matchingMessage += `\n💬 Welche Position interessiert Sie? Ich kann Ihnen gerne mehr Details geben!`;
+        } else if (matchingResults.type === 'candidates') {
+          matchingMessage = `🎯 Ich habe ${matchingResults.count} passende Kandidaten für Ihre Stellenbeschreibung gefunden:\n\n`;
+          matchingResults.matches.forEach((candidate: any, idx: number) => {
+            matchingMessage += `👤 **${candidate.label}** (${candidate.seniority_level})\n`;
+            matchingMessage += `   🎯 ${candidate.experience_years} Jahre Erfahrung\n`;
+            matchingMessage += `   📍 ${candidate.location} | ⏰ ${candidate.availability}\n`;
+            if (candidate.skills && candidate.skills.length > 0) {
+              matchingMessage += `   💡 Skills: ${candidate.skills.join(', ')}\n`;
+            }
+            matchingMessage += `\n`;
+          });
+          matchingMessage += `\n⚠️ Alle Profile sind DSGVO-konform anonymisiert.\n`;
+          matchingMessage += `💬 Bei Interesse erhalten Sie vollständige Unterlagen nach Unterzeichnung einer NDA. Möchten Sie mehr über einen dieser Kandidaten erfahren?`;
+        }
+        
+        // Füge Matching-Nachricht als Bot-Response hinzu
+        const matchingBotMessage = createBotMessage(matchingMessage);
+        
+        setChatMessages((prev: ChatMessage[]) => {
+          const next = [...prev, matchingBotMessage];
+          conversationRef.current = next;
+          
+          // Log mit Matching-Ergebnissen
+          loggerService.logConversation({
+            messages: next,
+            sessionId,
+            documentContext: context,
+          }).catch(err => console.info('[logger] could not log matching results', err));
+          
+          return next;
+        });
+        
+        console.log(`✅ Matching: ${matchingResults.count} ${matchingResults.type} gefunden`);
+        
+        // WICHTIG: Sende den CV-Kontext als versteckte Message ans Backend
+        // damit der Chatbot bei Folgefragen Zugriff darauf hat
+        setIsTyping(true);
+        
+        const preview = trimText(context.text, 1200);
+        let contextPrompt = '';
+        
+        if (matchingResults.type === 'jobs') {
+          contextPrompt = `[INTERNAL NOTE: CV wurde hochgeladen und analysiert. Hier der Kontext für weitere Fragen:
+
+CV-Auszug: ${preview}
+
+Die passenden Stellen wurden bereits präsentiert. Bei Folgefragen zum CV oder zu den vorgeschlagenen Positionen nutze diesen Kontext.]
+
+OK, verstanden. Der CV ist nun im Kontext gespeichert.`;
+        } else if (matchingResults.type === 'candidates') {
+          contextPrompt = `[INTERNAL NOTE: Stellenbeschreibung wurde hochgeladen und analysiert. Hier der Kontext für weitere Fragen:
+
+Stellen-Auszug: ${preview}
+
+Die passenden Kandidaten wurden bereits präsentiert. Bei Folgefragen zur Stelle oder zu den vorgeschlagenen Kandidaten nutze diesen Kontext.]
+
+OK, verstanden. Die Stellenbeschreibung ist nun im Kontext gespeichert.`;
+        }
+        
+        // Sende Context-Prompt um ihn in die History aufzunehmen
+        try {
+          await chatService.sendMessage({
+            message: contextPrompt,
+            history: conversationRef.current,
+            sessionId,
+            documentContext: context,
+            isDocumentSummary: false,
+          });
+          
+          // Füge die Context-Info als System-Message hinzu (nur für UI, nicht für Backend)
+          const contextInfoMessage = createSystemMessage(
+            `📋 Dokument-Kontext wurde gespeichert und steht für weitere Fragen zur Verfügung.`
+          );
+          
+          setChatMessages((prev: ChatMessage[]) => {
+            const next = [...prev, contextInfoMessage];
+            conversationRef.current = next;
+            return next;
+          });
+        } catch (err) {
+          console.warn('[upload] Context-Prompt fehlgeschlagen', err);
+        }
+        
+        setIsTyping(false);
+        setIsUploading(false);
+        return; // Früher Return
       }
 
       // Email wird NICHT sofort gesendet - nur beim Verlassen der Seite
       // Dokument-Upload wird als Lead-Signal gespeichert und beim Verlassen berücksichtigt
       console.log('📄 Dokument hochgeladen - Email wird beim Verlassen der Seite gesendet');
 
+      // Nur wenn KEIN Matching: Standard-Summary-Prompt
       setIsTyping(true);
       const summaryPrompt = buildDocumentSummaryPrompt(context);
       const summaryResponse = await chatService.sendMessage({

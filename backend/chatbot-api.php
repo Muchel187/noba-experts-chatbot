@@ -8,6 +8,16 @@
 
 header('Content-Type: application/json');
 
+// Debug-Logging-Funktion
+function debugLog($message) {
+    $logFile = __DIR__ . '/../chatbot-debug.log';
+    $timestamp = date('Y-m-d H:i:s');
+    file_put_contents($logFile, "[$timestamp] $message\n", FILE_APPEND);
+}
+
+// Log sofort beim Start
+debugLog("🚀 chatbot-api.php loaded - Method: " . ($_SERVER['REQUEST_METHOD'] ?? 'NONE') . " - Action: " . ($_GET['action'] ?? 'NONE'));
+
 // CORS-Header: Dynamisch für Entwicklung und Produktion
 $allowed_origins = [
     'https://www.noba-experts.de',
@@ -104,6 +114,8 @@ if ($current_time - $_SESSION['first_request_time'] > 60) {
     $_SESSION['first_request_time'] = $current_time;
 }
 
+debugLog("🚀 Chat Request received - Action: " . ($_GET['action'] ?? 'none'));
+
 // Prüfe Rate Limit
 if ($_SESSION['request_count'] >= $CONFIG['MAX_REQUESTS_PER_MINUTE']) {
     http_response_code(429);
@@ -116,15 +128,213 @@ if ($_SESSION['request_count'] >= $CONFIG['MAX_REQUESTS_PER_MINUTE']) {
 $_SESSION['request_count']++;
 
 // ===== INPUT VALIDIERUNG =====
-$input = json_decode(file_get_contents('php://input'), true);
+// Unterstütze sowohl JSON als auch FormData (für File-Uploads)
+$content_type = $_SERVER['CONTENT_TYPE'] ?? '';
 
-if (!$input || !isset($input['message'])) {
-    http_response_code(400);
-    die(json_encode(['error' => 'Keine Nachricht erhalten']));
+// WICHTIG: Prüfe zuerst ob FormData (FILES oder POST vorhanden)
+if ((stripos($content_type, 'multipart/form-data') !== false) || 
+    (!empty($_FILES)) || 
+    (!empty($_POST) && !isset($_POST['action']))) { // action = admin-api, nicht chatbot-api
+    
+    // FormData Request (mit File-Upload)
+    $user_message = $_POST['message'] ?? '';
+    $conversation_history = isset($_POST['history']) ? json_decode($_POST['history'], true) : [];
+    
+    // Debug-Logging
+    error_log('📦 FormData Request erkannt');
+    error_log('📝 Message: ' . $user_message);
+    error_log('📂 Files: ' . json_encode(array_keys($_FILES)));
+    error_log('📋 POST: ' . json_encode($_POST));
+} else {
+    // Standard JSON Request
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (!$input) {
+        http_response_code(400);
+        die(json_encode(['error' => 'Keine Daten erhalten']));
+    }
+    
+    $user_message = isset($input['message']) ? trim($input['message']) : '';
+    $conversation_history = $input['history'] ?? [];
 }
 
-$user_message = trim($input['message']);
-$conversation_history = $input['history'] ?? [];
+$user_message = trim($user_message);
+
+// Debug-Logging für alle Requests
+error_log('📨 Request Type: ' . ($content_type ?: 'unknown'));
+error_log('📝 Message received: ' . ($user_message ?: '(empty)'));
+error_log('📂 Files count: ' . count($_FILES));
+
+// Prüfe ob Message leer ist NACH File-Upload
+if (empty($user_message)) {
+    // Wenn File hochgeladen, aber keine Message, setze Default-Message
+    if (isset($_FILES) && count($_FILES) > 0) {
+        error_log('⚠️ Leere Message mit File-Upload - setze Default-Message');
+        $user_message = 'CV wurde hochgeladen - welche passenden Stellen haben Sie?';
+    } else {
+        error_log('❌ Keine Nachricht und kein File - Abbruch');
+        error_log('❌ POST: ' . json_encode($_POST));
+        error_log('❌ Content-Type: ' . $content_type);
+        http_response_code(400);
+        die(json_encode(['error' => 'Nachricht ist leer']));
+    }
+}
+
+$uploaded_file_content = ''; // Für CV/Projektbeschreibung-Uploads
+
+// FILE UPLOAD HANDLING (CV, Projektbeschreibungen)
+// Frontend sendet 'document', aber auch 'file' für Kompatibilität unterstützen
+$fileKey = isset($_FILES['document']) ? 'document' : (isset($_FILES['file']) ? 'file' : null);
+
+if ($fileKey && isset($_FILES[$fileKey]) && $_FILES[$fileKey]['error'] === UPLOAD_ERR_OK) {
+    $file = $_FILES[$fileKey];
+    $filename = $file['name'];
+    $tmpPath = $file['tmp_name'];
+    $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+    
+    error_log("📄 File upload detected: {$filename} ({$extension})");
+    
+    // Text extrahieren
+    if ($extension === 'pdf') {
+        $uploaded_file_content = extractTextFromPDF($tmpPath);
+    } elseif ($extension === 'docx') {
+        $uploaded_file_content = extractTextFromDOCX($tmpPath);
+    } elseif (in_array($extension, ['txt', 'doc'])) {
+        $uploaded_file_content = file_get_contents($tmpPath);
+    } else {
+        http_response_code(400);
+        die(json_encode(['error' => 'Unsupported file type. Please upload PDF, DOCX, or TXT.']));
+    }
+    
+    if ($uploaded_file_content) {
+        // VERBESSERTE UPLOAD-TYPE DETECTION (eindeutig!)
+        $isCV = false;
+        $isJobDescription = false;
+        $isProject = false;
+        
+        $content_lower = strtolower($uploaded_file_content);
+        $msg_lower = strtolower($user_message);
+        
+        error_log("📂 Analysiere Upload: Filename={$filename}");
+        
+        // STUFE 1: DATEINAME (höchste Priorität - in richtiger Reihenfolge!)
+        // WICHTIG: Stelle/Job VOR CV prüfen, da "Stellenanzeige" sonst fehlinterpretiert werden kann
+        if (stripos($filename, 'stelle') !== false ||
+            stripos($filename, 'job') !== false ||
+            stripos($filename, 'position') !== false ||
+            stripos($filename, 'vacancy') !== false ||
+            stripos($filename, 'ausschreibung') !== false) {
+            $isJobDescription = true;
+            error_log("✅ Typ erkannt via Dateiname: STELLENBESCHREIBUNG");
+        }
+        elseif (stripos($filename, 'projekt') !== false ||
+                stripos($filename, 'lastenheft') !== false ||
+                stripos($filename, 'anforderung') !== false ||
+                stripos($filename, 'requirement') !== false) {
+            $isProject = true;
+            error_log("✅ Typ erkannt via Dateiname: PROJEKT");
+        }
+        elseif (stripos($filename, 'cv') !== false || 
+                stripos($filename, 'lebenslauf') !== false ||
+                stripos($filename, 'resume') !== false ||
+                stripos($filename, 'bewerbung') !== false) {
+            $isCV = true;
+            error_log("✅ Typ erkannt via Dateiname: CV");
+        }
+        
+        // STUFE 2: CONTENT-ANALYSE (wenn Dateiname nicht eindeutig)
+        if (!$isCV && !$isJobDescription && !$isProject) {
+            error_log("📄 Dateiname nicht eindeutig - analysiere Content...");
+            
+            // CV-spezifische Keywords (eindeutig)
+            $cvScore = 0;
+            $cvKeywords = [
+                'berufserfahrung', 'werdegang', 'ausbildung', 'studium', 'abschluss',
+                'arbeitgeber', 'geboren', 'geburtsdatum', 'staatsangehörigkeit',
+                'career objective', 'employment history', 'degree', 'graduated'
+            ];
+            foreach ($cvKeywords as $kw) {
+                if (stripos($content_lower, $kw) !== false) $cvScore++;
+            }
+            
+            // Stellenbeschreibungs-Keywords (eindeutig)
+            $jobScore = 0;
+            $jobKeywords = [
+                'wir suchen', 'ihre aufgaben', 'ihr profil', 'wir bieten',
+                'stellenbeschreibung', 'ihre benefits', 'unternehmen bietet',
+                'we are looking for', 'your tasks', 'we offer', 'job description'
+            ];
+            foreach ($jobKeywords as $kw) {
+                if (stripos($content_lower, $kw) !== false) $jobScore++;
+            }
+            
+            // Projekt-Keywords (eindeutig)
+            $projectScore = 0;
+            $projectKeywords = [
+                'projektbeschreibung', 'lastenheft', 'pflichtenheft', 'team aufbau',
+                'meilensteine', 'projektziele', 'team zusammensetzung',
+                'project description', 'milestones', 'deliverables'
+            ];
+            foreach ($projectKeywords as $kw) {
+                if (stripos($content_lower, $kw) !== false) $projectScore++;
+            }
+            
+            error_log("📊 Content-Scores: CV={$cvScore}, Job={$jobScore}, Projekt={$projectScore}");
+            
+            // Entscheide basierend auf Scores (mindestens 2 Keywords für sichere Erkennung)
+            if ($cvScore >= 2 && $cvScore > $jobScore && $cvScore > $projectScore) {
+                $isCV = true;
+                error_log("✅ Typ erkannt via Content: CV (Score: {$cvScore})");
+            } 
+            elseif ($jobScore >= 2 && $jobScore > $cvScore && $jobScore > $projectScore) {
+                $isJobDescription = true;
+                error_log("✅ Typ erkannt via Content: STELLENBESCHREIBUNG (Score: {$jobScore})");
+            } 
+            elseif ($projectScore >= 2 && $projectScore > $cvScore && $projectScore > $jobScore) {
+                $isProject = true;
+                error_log("✅ Typ erkannt via Content: PROJEKT (Score: {$projectScore})");
+            }
+        }
+        
+        // STUFE 3: USER-MESSAGE KONTEXT (niedrigste Priorität, nur wenn noch unklar)
+        if (!$isCV && !$isJobDescription && !$isProject) {
+            error_log("📄 Content nicht eindeutig - analysiere User-Message...");
+            
+            // VERBESSERTE PATTERN-ERKENNUNG
+            if (preg_match('/mein (cv|lebenslauf)|job such|stelle such|passende.*stelle|welche.*stellen.*passen|offenen.*stellen.*passen/i', $msg_lower)) {
+                $isCV = true;
+                error_log("✅ Typ erkannt via Message: CV");
+            } 
+            elseif (preg_match('/kandidat|mitarbeiter.*find|für.*diese.*stelle|welche.*kandidaten.*passen|bewerber/i', $msg_lower)) {
+                $isJobDescription = true;
+                error_log("✅ Typ erkannt via Message: STELLENBESCHREIBUNG");
+            }
+            elseif (preg_match('/projekt|team.*aufbau|lastenheft/i', $msg_lower)) {
+                $isProject = true;
+                error_log("✅ Typ erkannt via Message: PROJEKT");
+            }
+        }
+        
+        // Finale Ausgabe
+        error_log("🎯 FINALE ERKENNUNG: CV=" . ($isCV ? 'JA' : 'NEIN') . 
+                  ", Stellenbeschreibung=" . ($isJobDescription ? 'JA' : 'NEIN') . 
+                  ", Projekt=" . ($isProject ? 'JA' : 'NEIN'));
+        
+        // Injiziere File-Content in die User-Message
+        $user_message = "[UPLOADED DOCUMENT: {$filename}]\n\n{$uploaded_file_content}\n\n---\n\nUser Message: {$user_message}";
+        error_log("✅ File content extracted: " . strlen($uploaded_file_content) . " characters");
+    } else {
+        error_log("⚠️ Failed to extract text from {$filename}");
+        $isCV = false;
+        $isJobDescription = false;
+        $isProject = false;
+    }
+} else {
+    // Keine Datei hochgeladen
+    $isCV = false;
+    $isJobDescription = false;
+    $isProject = false;
+}
 
 // Sicherheitschecks
 if (strlen($user_message) > $CONFIG['MAX_MESSAGE_LENGTH']) {
@@ -137,8 +347,51 @@ if (empty($user_message)) {
     die(json_encode(['error' => 'Nachricht ist leer']));
 }
 
-// XSS-Schutz
-$user_message = htmlspecialchars($user_message, ENT_QUOTES, 'UTF-8');
+// XSS-Schutz (NUR für ursprüngliche Message, nicht für File-Content)
+if (!$uploaded_file_content) {
+    $user_message = htmlspecialchars($user_message, ENT_QUOTES, 'UTF-8');
+}
+
+// ===== FILE CONTENT EXTRACTION =====
+/**
+ * Extrahiere Text aus PDF-Datei
+ */
+function extractTextFromPDF($filepath) {
+    // Methode 1: pdftotext (wenn auf Server verfügbar)
+    $output = shell_exec("pdftotext " . escapeshellarg($filepath) . " -");
+    if ($output) return $output;
+
+    // Methode 2: Fallback - Einfache PDF-Textextraktion
+    $content = file_get_contents($filepath);
+    $text = '';
+
+    // Sehr einfache PDF-Textextraktion (funktioniert nicht bei allen PDFs)
+    if (preg_match_all('/\(([^)]+)\)/i', $content, $matches)) {
+        $text = implode(' ', $matches[1]);
+    }
+
+    return $text ?: 'Text konnte nicht extrahiert werden. Bitte als Text-Datei hochladen.';
+}
+
+/**
+ * Extrahiere Text aus DOCX-Datei
+ */
+function extractTextFromDOCX($filepath) {
+    $zip = new ZipArchive;
+    $text = '';
+
+    if ($zip->open($filepath) === TRUE) {
+        $xml = $zip->getFromName('word/document.xml');
+        $zip->close();
+
+        if ($xml) {
+            $xml = str_replace('</w:p>', "\n", $xml);
+            $text = strip_tags($xml);
+        }
+    }
+
+    return $text ?: 'Text konnte nicht extrahiert werden. Bitte als Text-Datei hochladen.';
+}
 
 // ===== HOMEPAGE CONTENT EXTRAKTION =====
 function fetchHomepageContent() {
@@ -248,40 +501,137 @@ function fetchProjects() {
     return array_values($openProjects);
 }
 
+// ===== INTELLIGENTE SKILL-EXTRAKTION MIT KI =====
+function extractSkillsFromCV($cvText) {
+    global $CONFIG;
+    
+    $api_key = $CONFIG['GOOGLE_AI_API_KEY'];
+    $model = $CONFIG['GEMINI_MODEL'];
+    
+    $prompt = "Analysiere diesen Lebenslauf und extrahiere ALLE relevanten Skills, Technologien und Qualifikationen.
+
+CV-TEXT:
+" . mb_substr($cvText, 0, 15000) . "
+
+AUFGABE:
+Extrahiere folgende Informationen:
+- Alle IT-Skills (Programmiersprachen, Frameworks, Tools, Datenbanken, Cloud, etc.)
+- Branchenkenntnisse
+- Soft Skills
+- Zertifikate
+- Sprachkenntnisse
+- Standort-Präferenzen (falls erwähnt)
+- Erfahrungsjahre (Gesamt)
+- Seniority-Level (Junior/Mid/Senior/Expert)
+
+ANTWORT-FORMAT (nur JSON):
+{
+  \"skills\": [\"Skill1\", \"Skill2\", ...],
+  \"experience_years\": 5,
+  \"seniority\": \"Senior\",
+  \"industries\": [\"Industrie1\", ...],
+  \"languages\": [\"Deutsch\", \"Englisch\", ...],
+  \"location_preferences\": [\"Berlin\", \"Remote\", ...]
+}
+
+WICHTIG: Antworte NUR mit dem JSON-Objekt!";
+    
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$api_key";
+    
+    $data = [
+        'contents' => [
+            [
+                'parts' => [
+                    ['text' => $prompt]
+                ]
+            ]
+        ],
+        'generationConfig' => [
+            'temperature' => 0.2,
+            'maxOutputTokens' => 1000,
+        ],
+    ];
+    
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($http_code !== 200) {
+        error_log("❌ Gemini API Error (Skill-Extraktion): HTTP $http_code");
+        return null;
+    }
+    
+    $result = json_decode($response, true);
+    $ai_text = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
+    
+    // JSON extrahieren
+    $ai_text = trim($ai_text);
+    $ai_text = preg_replace('/^```json\s*/s', '', $ai_text);
+    $ai_text = preg_replace('/\s*```$/s', '', $ai_text);
+    
+    $extracted = json_decode($ai_text, true);
+    
+    if (!$extracted) {
+        error_log("❌ Failed to parse AI response (Skill-Extraktion): $ai_text");
+        return null;
+    }
+    
+    error_log("✅ Skills extrahiert: " . count($extracted['skills'] ?? []) . " Skills gefunden");
+    return $extracted;
+}
+
 // ===== MATCHING: Finde passende Vakanzen für Kandidaten =====
-function findMatchingVacancies($userMessage, $vacancies) {
+function findMatchingVacancies($userMessage, $vacancies, $isUploadedCV = false) {
     if (empty($vacancies)) {
         return [];
     }
 
     $lower = strtolower($userMessage);
     $matches = [];
-
-    // Extrahiere Skills aus User-Nachricht
-    $commonSkills = [
-        'php', 'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node',
-        'docker', 'kubernetes', 'aws', 'azure', 'devops', 'cloud', 'ci/cd',
-        'sql', 'mysql', 'postgresql', 'mongodb', 'redis',
-        'embedded', 'c++', 'c#', 'rust', 'golang', 'typescript',
-        'machine learning', 'ai', 'data science', 'big data',
-        'scrum', 'agile', 'kanban', 'project management',
-        'it', 'security', 'netzwerk', 'server', 'administration',
-        'einkauf', 'vertrieb', 'mechaniker', 'elektroniker', 'sachbearbeiter'
-    ];
-
-    $userSkills = [];
-    foreach ($commonSkills as $skill) {
-        if (stripos($lower, $skill) !== false) {
-            $userSkills[] = strtolower($skill);
-        }
+    
+    // NEUE LOGIK: Bei CV-Upload, nutze KI für intelligente Skill-Extraktion
+    $extractedSkills = null;
+    if ($isUploadedCV && strpos($userMessage, '[UPLOADED DOCUMENT:') !== false) {
+        error_log('🧠 Nutze KI für intelligente Skill-Extraktion...');
+        $extractedSkills = extractSkillsFromCV($userMessage);
     }
-
-    // Extrahiere Standorte aus User-Nachricht
-    $locations = ['neuss', 'düsseldorf', 'koeln', 'köln', 'aachen', 'ratingen', 'berlin', 'münchen', 'hamburg', 'remote', 'mönchengladbach', 'hilchenbach'];
+    
+    // Skills sammeln
+    $userSkills = [];
     $userLocations = [];
-    foreach ($locations as $loc) {
-        if (stripos($lower, $loc) !== false) {
-            $userLocations[] = $loc;
+    
+    if ($extractedSkills) {
+        // Von KI extrahierte Skills (viel präziser!)
+        $userSkills = array_map('strtolower', $extractedSkills['skills'] ?? []);
+        $userLocations = array_map('strtolower', $extractedSkills['location_preferences'] ?? []);
+        error_log('✅ KI-Extraktion: ' . count($userSkills) . ' Skills, ' . count($userLocations) . ' Standorte');
+    } else {
+        // Fallback: Manuelles Pattern-Matching (wie vorher)
+        $commonSkills = [
+            'php', 'javascript', 'python', 'java', 'c++', 'c#', 'rust', 'golang', 'go', 'typescript',
+            'react', 'angular', 'vue', 'node', 'docker', 'kubernetes', 'aws', 'azure', 'devops',
+            'sql', 'mysql', 'postgresql', 'mongodb', 'sap', 's/4hana', 'abap', 'embedded',
+            'scrum', 'agile', 'projektmanagement', 'einkauf', 'vertrieb', 'controlling'
+        ];
+        
+        foreach ($commonSkills as $skill) {
+            if (stripos($lower, $skill) !== false) {
+                $userSkills[] = strtolower($skill);
+            }
+        }
+        
+        $locations = ['neuss', 'düsseldorf', 'köln', 'aachen', 'berlin', 'münchen', 'hamburg', 'remote'];
+        foreach ($locations as $loc) {
+            if (stripos($lower, $loc) !== false) {
+                $userLocations[] = $loc;
+            }
         }
     }
 
@@ -347,7 +697,7 @@ function findMatchingVacancies($userMessage, $vacancies) {
 }
 
 // ===== MATCHING: Finde passende Kandidaten für Unternehmen =====
-function findMatchingCandidates($userMessage, $candidates) {
+function findMatchingCandidates($userMessage, $candidates, $useAI = false) {
     if (empty($candidates)) {
         return [];
     }
@@ -362,7 +712,12 @@ function findMatchingCandidates($userMessage, $candidates) {
         'sql', 'mysql', 'postgresql', 'mongodb', 'redis',
         'embedded', 'c++', 'c#', 'rust', 'golang', 'typescript',
         'machine learning', 'ai', 'data science', 'big data',
-        'scrum', 'agile', 'kanban', 'project management'
+        'scrum', 'agile', 'kanban', 'project management',
+        'rpa', 'prozessautomatisierung', 'uipath', 'automation anywhere',
+        '.net', 'c#', 'asp.net', 'wpf', 'winforms',
+        'frontend', 'backend', 'fullstack', 'mobile', 'ios', 'android',
+        'sap', 'erp', 'crm', 'salesforce',
+        'projektmanagement', 'projektleitung', 'scrum master', 'product owner'
     ];
 
     $requestedSkills = [];
@@ -377,10 +732,10 @@ function findMatchingCandidates($userMessage, $candidates) {
         $score = 0;
         $candidateSkills = array_map('strtolower', $candidate['skills'] ?? []);
 
-        // Skill-Matching
+        // Skill-Matching (höchste Priorität)
         foreach ($requestedSkills as $reqSkill) {
             if (in_array($reqSkill, $candidateSkills)) {
-                $score += 10;
+                $score += 15; // Erhöht von 10 für bessere Gewichtung
             }
         }
 
@@ -388,6 +743,25 @@ function findMatchingCandidates($userMessage, $candidates) {
         $searchableText = strtolower(($candidate['anonymized_profile'] ?? ''));
         foreach ($requestedSkills as $reqSkill) {
             if (stripos($searchableText, $reqSkill) !== false) {
+                $score += 8; // Erhöht von 5
+            }
+        }
+        
+        // Seniority-Level Matching
+        if (stripos($lower, 'senior') !== false && stripos(($candidate['seniority_level'] ?? ''), 'senior') !== false) {
+            $score += 10;
+        }
+        if (stripos($lower, 'junior') !== false && stripos(($candidate['seniority_level'] ?? ''), 'junior') !== false) {
+            $score += 10;
+        }
+        if (stripos($lower, 'lead') !== false && stripos(($candidate['seniority_level'] ?? ''), 'lead') !== false) {
+            $score += 10;
+        }
+        
+        // Location Matching
+        $locationKeywords = ['münchen', 'berlin', 'hamburg', 'köln', 'frankfurt', 'stuttgart', 'düsseldorf', 'remote'];
+        foreach ($locationKeywords as $loc) {
+            if (stripos($lower, $loc) !== false && stripos(($candidate['location'] ?? ''), $loc) !== false) {
                 $score += 5;
             }
         }
@@ -403,8 +777,12 @@ function findMatchingCandidates($userMessage, $candidates) {
     // Sortiere nach Score (höchste zuerst)
     usort($matches, fn($a, $b) => $b['score'] <=> $a['score']);
 
-    // Gib Top 3 zurück
-    return array_slice(array_column($matches, 'candidate'), 0, 3);
+    // Gib Top 5 zurück (erhöht von 3 für mehr Auswahl)
+    $topCandidates = array_slice(array_column($matches, 'candidate'), 0, 5);
+    
+    error_log('🔍 Kandidaten-Matching: ' . count($matches) . ' scored, Top ' . count($topCandidates) . ' returned');
+    
+    return $topCandidates;
 }
 
 function getRelevantContext($message) {
@@ -1155,6 +1533,16 @@ Als Mina bist du **IN ERSTER LINIE RECRUITERIN**:
 - Skills werden automatisch gematcht
 - Alle Stellenbeschreibungen sind DSGVO-konform anonymisiert (keine Firmennamen)
 
+**CV-UPLOAD & AUTOMATISCHES MATCHING:**
+- Kandidaten können ihren CV hochladen (PDF/DOCX/TXT)
+- Du erkennst CV-Uploads automatisch am Marker UPLOADED DOCUMENT
+- Wenn ein CV hochgeladen wird:
+  1. Analysiere den CV gründlich (Skills, Erfahrung, Stärken)
+  2. Zeige automatisch passende Vakanzen aus unserer Datenbank
+  3. Gib konstruktives Feedback zum CV
+  4. Frage nach Präferenzen und Karrierezielen
+- Sei enthusiastisch und hilfreich beim CV-Matching!
+
 **KANDIDATEN-DATENBANK:**
 - Du hast Zugriff auf anonymisierte Kandidatenprofile
 - Wenn Unternehmen nach Kandidaten fragen, zeige passende Profile
@@ -1358,7 +1746,7 @@ Ziel: Leads generieren durch strukturierte Gespräche.";
             'temperature' => 0.7, // Ausgewogen: natürlich aber konsistent
             'topP' => 0.9,
             'topK' => 40,
-            'maxOutputTokens' => 800, // Erhöht für CV-Analysen (vorher 300)
+            'maxOutputTokens' => 2048, // Erhöht für thinking-model (vorher 800)
             'candidateCount' => 1
         ],
         'safetySettings' => [
@@ -1462,9 +1850,307 @@ try {
     $vacancies = fetchCurrentVacancies();
     $candidates = fetchCandidateProfiles();
     $projects = fetchProjects();
+    debugLog("📊 Daten geladen: " . count($vacancies) . " Vakanzen, " . count($candidates) . " Kandidaten, " . count($projects) . " Projekte");
+    debugLog("📝 User-Message: " . substr($user_message, 0, 100));
+    
+    // ============================================================
+    // CV UPLOAD ERKANNT - Automatisches Job-Matching
+    // ============================================================
+    
+    if ($isCV) {
+        error_log('🎯 CV Upload erkannt - Starte automatisches Matching');
+        error_log('📊 Debug: Anzahl verfügbare Vakanzen: ' . count($vacancies));
+        
+        // Finde passende Vakanzen basierend auf CV-Content (mit KI-Analyse!)
+        $matchedVacancies = findMatchingVacancies($user_message, $vacancies, true);
+        
+        error_log('📊 Debug: Gefundene Matches: ' . count($matchedVacancies));
+        
+        // Falls Matches gefunden, zeige diese (Top 5)
+        if (!empty($matchedVacancies)) {
+            $jobs_text = "🎯 PASSENDE STELLENANGEBOTE BASIEREND AUF IHREM CV:\n\n";
+            
+            foreach (array_slice($matchedVacancies, 0, 5) as $idx => $job) {
+                $jobs_text .= "🔹 " . $job['title'];
+                if (!empty($job['location'])) {
+                    $jobs_text .= "\n   📍 " . $job['location'];
+                }
+                if (!empty($job['experience_level'])) {
+                    $jobs_text .= " | Level: " . $job['experience_level'];
+                }
+                if (!empty($job['required_skills'])) {
+                    $jobs_text .= "\n   💡 Skills: " . implode(', ', array_slice($job['required_skills'], 0, 5));
+                }
+                if (!empty($job['salary_range'])) {
+                    $jobs_text .= "\n   💰 Gehalt: " . $job['salary_range'];
+                }
+                $jobs_text .= "\n\n";
+            }
+            $jobs_text .= "✨ Diese Positionen passen besonders gut zu Ihrem Profil!\n";
+            $jobs_text .= "💡 Für welche Position interessieren Sie sich am meisten?";
+            
+            // Injiziere CV-Analyse mit Matching
+            $enriched_message = "[CONTEXT-INFO: Der User hat einen CV hochgeladen. Analysiere das CV und präsentiere passende Stellenangebote:\n\n" . $jobs_text . "\n\n---\n\nERWARTET: \n1. Bestätige den CV-Upload freundlich\n2. Gib eine kurze Analyse des CV (Stärken, Erfahrung)\n3. Präsentiere die passenden Stellen enthusiastisch\n4. Frage welche Position interessant ist oder ob mehr Details gewünscht werden]\n\n" . $user_message;
+            error_log('✅ CV-Matching abgeschlossen: ' . count($matchedVacancies) . ' passende Jobs gefunden');
+        } else {
+            // Keine direkten Matches - zeige trotzdem Top 5 Vakanzen
+            error_log('⚠️ Keine direkten Matches - zeige alle verfügbaren Vakanzen');
+            
+            $jobsToShow = array_slice($vacancies, 0, 5);
+            
+            if (!empty($jobsToShow)) {
+                $jobs_text = "💼 AKTUELLE OFFENE STELLEN:\n\n";
+                
+                foreach ($jobsToShow as $idx => $job) {
+                    $jobs_text .= "🔹 " . $job['title'];
+                    if (!empty($job['location'])) {
+                        $jobs_text .= "\n   📍 " . $job['location'];
+                    }
+                    if (!empty($job['experience_level'])) {
+                        $jobs_text .= " | Level: " . $job['experience_level'];
+                    }
+                    if (!empty($job['required_skills'])) {
+                        $jobs_text .= "\n   💡 Skills: " . implode(', ', array_slice($job['required_skills'], 0, 5));
+                    }
+                    if (!empty($job['salary_range'])) {
+                        $jobs_text .= "\n   💰 Gehalt: " . $job['salary_range'];
+                    }
+                    $jobs_text .= "\n\n";
+                }
+                $jobs_text .= "✨ Ihr CV wurde analysiert! Welche Position spricht Sie am meisten an?\n";
+                $jobs_text .= "💡 Wir haben auch viele nicht-öffentliche Positionen - lassen Sie uns sprechen!";
+                
+                // Injiziere CV-Analyse mit allen Vakanzen
+                $enriched_message = "[CONTEXT-INFO: Der User hat einen CV hochgeladen. Analysiere das CV, gib eine kurze Bewertung (Stärken) und präsentiere unsere aktuellen Stellenangebote:\n\n" . $jobs_text . "\n\n---\n\nERWARTET: \n1. Bestätige den CV-Upload freundlich\n2. Gib eine kurze positive Analyse des CV\n3. Präsentiere die Stellen\n4. Frage nach Interessen und Wünschen]\n\n" . $user_message;
+            } else {
+                // Keine Vakanzen verfügbar
+                $enriched_message = "[CONTEXT-INFO: Der User hat einen CV hochgeladen. Analysiere das CV, gib konstruktives Feedback und erkläre, dass wir viele nicht-öffentliche Positionen vermitteln können. Frage nach seinen Wünschen und Zielen.]\n\n" . $user_message;
+            }
+            error_log('⚠️ CV analysiert - keine spezifischen Matches, aber Vakanzen präsentiert');
+        }
+    }
+    
+    // ============================================================
+    // STELLENBESCHREIBUNG UPLOAD ERKANNT - Automatisches Kandidaten-Matching
+    // ============================================================
+    
+    elseif ($isJobDescription) {
+        error_log('🎯 Stellenbeschreibung Upload erkannt - Starte automatisches Kandidaten-Matching');
+        error_log('📊 Debug: Anzahl verfügbare Kandidaten: ' . count($candidates));
+        
+        // Finde passende Kandidaten basierend auf Stellenbeschreibung (mit KI-Analyse!)
+        $matchedCandidates = findMatchingCandidates($user_message, $candidates, true);
+        
+        error_log('📊 Debug: Gefundene Kandidaten-Matches: ' . count($matchedCandidates));
+        
+        // Falls Matches gefunden, zeige diese (Top 3)
+        if (!empty($matchedCandidates)) {
+            $candidates_text = "🎯 PASSENDE KANDIDATENPROFILE FÜR IHRE STELLENBESCHREIBUNG:\n\n";
+            
+            foreach (array_slice($matchedCandidates, 0, 3) as $idx => $candidate) {
+                $candidates_text .= "👤 KANDIDAT #" . ($idx + 1);
+                if (!empty($candidate['seniority_level'])) {
+                    $candidates_text .= " (" . $candidate['seniority_level'] . ")";
+                }
+                $candidates_text .= "\n";
+                
+                if (!empty($candidate['experience_years'])) {
+                    $candidates_text .= "   🎯 Erfahrung: " . $candidate['experience_years'] . " Jahre\n";
+                }
+                
+                if (!empty($candidate['skills'])) {
+                    $candidates_text .= "   💡 Skills: " . implode(', ', array_slice($candidate['skills'], 0, 8)) . "\n";
+                }
+                
+                if (!empty($candidate['location'])) {
+                    $candidates_text .= "   📍 Region: " . $candidate['location'] . "\n";
+                }
+                
+                if (!empty($candidate['availability'])) {
+                    $candidates_text .= "   ⏰ Verfügbarkeit: " . $candidate['availability'] . "\n";
+                }
+                
+                // Gekürzte Profil-Beschreibung (erste 120 Zeichen)
+                if (!empty($candidate['anonymized_profile'])) {
+                    $profile_preview = mb_substr($candidate['anonymized_profile'], 0, 120) . '...';
+                    $candidates_text .= "   📝 " . $profile_preview . "\n";
+                }
+                
+                $candidates_text .= "\n";
+            }
+            $candidates_text .= "⚠️ WICHTIG: Alle Profile sind DSGVO-konform anonymisiert. Bei Interesse erhalten Sie vollständige Unterlagen nach Unterzeichnung einer NDA.\n";
+            $candidates_text .= "💡 Welches Profil interessiert Sie am meisten?";
+            
+            // Injiziere Stellenbeschreibungs-Analyse mit Matching
+            $enriched_message = "[CONTEXT-INFO: Der User hat eine Stellenbeschreibung hochgeladen. Analysiere die Stellenbeschreibung und präsentiere passende Kandidatenprofile:\n\n" . $candidates_text . "\n\n---\n\nERWARTET: \n1. Bestätige den Upload der Stellenbeschreibung freundlich\n2. Gib eine kurze Zusammenfassung der Position (Skills, Level, Standort)\n3. Präsentiere die passenden Kandidaten enthusiastisch\n4. Frage welches Profil interessant ist oder ob mehr Details gewünscht werden\n5. Erkläre dass alle Profile anonymisiert sind (DSGVO)]\n\n" . $user_message;
+            error_log('✅ Stellenbeschreibungs-Matching abgeschlossen: ' . count($matchedCandidates) . ' passende Kandidaten gefunden');
+        } else {
+            // Keine direkten Matches - zeige trotzdem Top 3 Kandidaten
+            error_log('⚠️ Keine direkten Kandidaten-Matches - zeige alle verfügbaren Kandidaten');
+            
+            $candidatesToShow = array_slice($candidates, 0, 3);
+            
+            if (!empty($candidatesToShow)) {
+                $candidates_text = "👥 VERFÜGBARE KANDIDATENPROFILE (ANONYMISIERT):\n\n";
+                
+                foreach ($candidatesToShow as $idx => $candidate) {
+                    $candidates_text .= "👤 KANDIDAT #" . ($idx + 1);
+                    if (!empty($candidate['seniority_level'])) {
+                        $candidates_text .= " (" . $candidate['seniority_level'] . ")";
+                    }
+                    $candidates_text .= "\n";
+                    
+                    if (!empty($candidate['experience_years'])) {
+                        $candidates_text .= "   🎯 Erfahrung: " . $candidate['experience_years'] . " Jahre\n";
+                    }
+                    
+                    if (!empty($candidate['skills'])) {
+                        $candidates_text .= "   💡 Skills: " . implode(', ', array_slice($candidate['skills'], 0, 8)) . "\n";
+                    }
+                    
+                    if (!empty($candidate['location'])) {
+                        $candidates_text .= "   📍 Region: " . $candidate['location'] . "\n";
+                    }
+                    
+                    if (!empty($candidate['availability'])) {
+                        $candidates_text .= "   ⏰ Verfügbarkeit: " . $candidate['availability'] . "\n";
+                    }
+                    
+                    if (!empty($candidate['anonymized_profile'])) {
+                        $profile_preview = mb_substr($candidate['anonymized_profile'], 0, 120) . '...';
+                        $candidates_text .= "   📝 " . $profile_preview . "\n";
+                    }
+                    
+                    $candidates_text .= "\n";
+                }
+                $candidates_text .= "⚠️ WICHTIG: Alle Profile sind DSGVO-konform anonymisiert.\n";
+                $candidates_text .= "✨ Ihre Stellenbeschreibung wurde analysiert! Welches Profil interessiert Sie?\n";
+                $candidates_text .= "💡 Wir haben Zugriff auf ein großes Netzwerk - lassen Sie uns über Ihre Anforderungen sprechen!";
+                
+                // Injiziere Stellenbeschreibungs-Analyse mit allen Kandidaten
+                $enriched_message = "[CONTEXT-INFO: Der User hat eine Stellenbeschreibung hochgeladen. Analysiere die Stellenbeschreibung, gib eine kurze Zusammenfassung und präsentiere unsere verfügbaren Kandidaten:\n\n" . $candidates_text . "\n\n---\n\nERWARTET: \n1. Bestätige den Upload freundlich\n2. Gib eine kurze Analyse der Stellenbeschreibung (Position, Skills, Level)\n3. Präsentiere die Kandidaten\n4. Frage nach Interessen und weiteren Anforderungen\n5. Erkläre dass alle Profile anonymisiert sind (DSGVO)]\n\n" . $user_message;
+            } else {
+                // Keine Kandidaten verfügbar
+                $enriched_message = "[CONTEXT-INFO: Der User hat eine Stellenbeschreibung hochgeladen. Analysiere die Stellenbeschreibung, gib eine Zusammenfassung und erkläre, dass wir über ein großes Netzwerk verfügen und gerne die perfekten Kandidaten finden. Frage nach weiteren Details und Anforderungen.]\n\n" . $user_message;
+            }
+            error_log('⚠️ Stellenbeschreibung analysiert - keine spezifischen Matches, aber Kandidaten präsentiert');
+        }
+    }
 
+    // KANDIDAT FRAGT NACH JOBS
+    // Priorisiere Job-Anfragen BEVOR Projekt-Anfragen
+    if (stripos($user_message, 'Aktuelle Stellenangebote') !== false ||
+        stripos($user_message, 'Aktuelle Stellen') !== false ||
+        stripos($user_message, '💼 Aktuelle Stellenangebote') !== false ||
+        stripos($user_message, '💼 Aktuelle Stellen') !== false ||
+        stripos($user_message, '💼 Aktuelle Jobs & Projekte') !== false ||
+        stripos($user_message, 'Aktuelle Jobs') !== false ||
+        stripos($user_message, 'offene Stellen') !== false ||
+        stripos($user_message, 'offene Jobs') !== false ||
+        stripos($user_message, 'welche Stellen habt ihr') !== false ||
+        stripos($user_message, 'welche offenen Stellen') !== false ||
+        stripos($user_message, 'welche Stellen') !== false ||
+        stripos($user_message, 'welche Jobs') !== false ||
+        stripos($user_message, 'freie Stellen') !== false ||
+        (stripos($user_message, 'stellen') !== false && stripos($user_message, 'haben Sie') !== false) ||
+        (stripos($user_message, 'stellen') !== false && stripos($user_message, 'gibt es') !== false) ||
+        (stripos($user_message, 'jobs') !== false && stripos($user_message, 'verfügbar') !== false)) {
+
+        debugLog('🎯 Job-Anfrage erkannt: ' . substr($user_message, 0, 100));
+
+        // Versuche Matching basierend auf User-Message
+        $matchedVacancies = findMatchingVacancies($user_message, $vacancies);
+
+        $jobsToShow = !empty($matchedVacancies) ? $matchedVacancies : array_slice($vacancies, 0, 5);
+
+        if ($jobsToShow && count($jobsToShow) > 0) {
+            $jobs_text = !empty($matchedVacancies)
+                ? "PASSENDE STELLENANGEBOTE FÜR IHRE SKILLS:\n\n"
+                : "AKTUELLE STELLENANGEBOTE (Auszug):\n\n";
+
+            foreach ($jobsToShow as $idx => $job) {
+                $jobs_text .= "🔹 " . $job['title'];
+                if (!empty($job['location'])) {
+                    $jobs_text .= "\n   📍 " . $job['location'];
+                }
+                if (!empty($job['experience_level'])) {
+                    $jobs_text .= " | Level: " . $job['experience_level'];
+                }
+                if (!empty($job['required_skills'])) {
+                    $jobs_text .= "\n   💡 Skills: " . implode(', ', array_slice($job['required_skills'], 0, 5));
+                }
+                $jobs_text .= "\n\n";
+            }
+            $jobs_text .= "⚠️ WICHTIG: Dies ist nur ein Auszug unserer aktuellen Vakanzen. Wir haben viele weitere Positionen, die nicht öffentlich ausgeschrieben sind.";
+
+            // Injiziere Jobs als Context
+            $enriched_message = "[CONTEXT-INFO: Der User möchte aktuelle Stellenangebote sehen. Präsentiere folgende Jobs freundlich und professionell:\n\n" . $jobs_text . "\n\nERWARTET: Präsentiere die Jobs übersichtlich, betone dass dies nur ein Auszug ist, und frage welche Position interessiert oder ob der User mehr erfahren möchte.]\n\nUser-Frage: " . $user_message;
+            debugLog('✨ Stellenangebote injiziert: ' . count($jobsToShow) . ' Vakanzen');
+        }
+    }
+    // KUNDE FRAGT NACH KANDIDATEN
+    elseif (stripos($user_message, '👥 Aktuelle Experten') !== false ||
+            stripos($user_message, 'Aktuelle Experten') !== false ||
+            stripos($user_message, 'verfügbare Experten') !== false ||
+            stripos($user_message, 'verfügbare Kandidaten') !== false ||
+            stripos($user_message, 'welche Kandidaten') !== false ||
+            stripos($user_message, 'welche Experten') !== false ||
+            (stripos($user_message, 'kandidat') !== false && 
+             (stripos($user_message, 'haben Sie') !== false || stripos($user_message, 'verfügbar') !== false)) ||
+            (stripos($user_message, 'bewerber') !== false && stripos($user_message, 'verfügbar') !== false) ||
+            (stripos($user_message, 'mitarbeiter') !== false && 
+             (stripos($user_message, 'such') !== false || stripos($user_message, 'brauche') !== false || stripos($user_message, 'finden') !== false))) {
+
+        // Versuche Matching basierend auf User-Message
+        $matchedCandidates = findMatchingCandidates($user_message, $candidates);
+
+        $candidatesToShow = !empty($matchedCandidates) ? $matchedCandidates : array_slice($candidates, 0, 3);
+
+        if ($candidatesToShow && count($candidatesToShow) > 0) {
+            $candidates_text = !empty($matchedCandidates)
+                ? "PASSENDE KANDIDATENPROFILE FÜR IHRE ANFORDERUNGEN:\n\n"
+                : "VERFÜGBARE KANDIDATENPROFILE (Auszug - ANONYMISIERT):\n\n";
+
+            foreach ($candidatesToShow as $idx => $candidate) {
+                $candidates_text .= "👤 KANDIDAT #" . ($idx + 1);
+                if (!empty($candidate['seniority_level'])) {
+                    $candidates_text .= " (" . $candidate['seniority_level'] . ")";
+                }
+                $candidates_text .= "\n";
+
+                if (!empty($candidate['experience_years'])) {
+                    $candidates_text .= "   🎯 Erfahrung: " . $candidate['experience_years'] . " Jahre\n";
+                }
+
+                if (!empty($candidate['skills'])) {
+                    $candidates_text .= "   💡 Skills: " . implode(', ', array_slice($candidate['skills'], 0, 8)) . "\n";
+                }
+
+                if (!empty($candidate['location'])) {
+                    $candidates_text .= "   📍 Region: " . $candidate['location'] . "\n";
+                }
+
+                if (!empty($candidate['availability'])) {
+                    $candidates_text .= "   ⏰ Verfügbarkeit: " . $candidate['availability'] . "\n";
+                }
+
+                // Gekürzte Profil-Beschreibung (erste 150 Zeichen)
+                if (!empty($candidate['anonymized_profile'])) {
+                    $profile_preview = mb_substr($candidate['anonymized_profile'], 0, 150) . '...';
+                    $candidates_text .= "   📝 " . $profile_preview . "\n";
+                }
+
+                $candidates_text .= "\n";
+            }
+            $candidates_text .= "⚠️ WICHTIG: Alle Profile sind DSGVO-konform anonymisiert. Bei Interesse erhalten Sie vollständige Unterlagen nach Unterzeichnung einer Vertraulichkeitsvereinbarung.";
+
+            // Injiziere Kandidaten als Context
+            $enriched_message = "[CONTEXT-INFO: Der User (Kunde/Unternehmen) sucht Kandidaten. Präsentiere folgende anonymisierte Profile professionell:\n\n" . $candidates_text . "\n\nERWARTET: Präsentiere die Kandidaten übersichtlich, erkläre dass alle Profile anonymisiert sind (DSGVO), und frage welches Profil interessiert oder ob mehr Details gewünscht sind.]\n\nUser-Frage: " . $user_message;
+            error_log('✨ Kandidatenprofile injiziert: ' . count($candidatesToShow) . ' Profile');
+        }
+    }
     // KUNDE FRAGT NACH PROJEKT-ANALYSE / TEAM-AUFBAU
-    if (stripos($user_message, 'projekt') !== false ||
+    elseif (stripos($user_message, 'projekt') !== false ||
         stripos($user_message, 'team') !== false ||
         stripos($user_message, 'gewerk') !== false ||
         stripos($user_message, 'lastenheft') !== false ||
@@ -1520,103 +2206,6 @@ try {
             
             $enriched_message = "[CONTEXT-INFO: Der User fragt nach Projekt-Analyse. Erkläre die Funktion:\n\n" . $intro_text . "\n\nERWARTET: Erkläre enthusiastisch die Projekt-Analyse-Funktion und fordere den User auf, eine Projektbeschreibung zu teilen.]\n\nUser-Frage: " . $user_message;
             error_log('✨ Projekt-Analyse-Intro injiziert (keine Projekte vorhanden)');
-        }
-    }
-    // KANDIDAT FRAGT NACH JOBS
-    if (stripos($user_message, 'Aktuelle Stellenangebote') !== false ||
-        stripos($user_message, 'Aktuelle Stellen') !== false ||
-        stripos($user_message, '💼 Aktuelle Stellenangebote') !== false ||
-        stripos($user_message, '💼 Aktuelle Stellen') !== false ||
-        stripos($user_message, '💼 Aktuelle Jobs & Projekte') !== false ||
-        stripos($user_message, 'Aktuelle Jobs') !== false ||
-        stripos($user_message, 'offene Jobs') !== false ||
-        stripos($user_message, 'job') !== false ||
-        stripos($user_message, 'stelle') !== false) {
-
-        // Versuche Matching basierend auf User-Message
-        $matchedVacancies = findMatchingVacancies($user_message, $vacancies);
-
-        $jobsToShow = !empty($matchedVacancies) ? $matchedVacancies : array_slice($vacancies, 0, 5);
-
-        if ($jobsToShow && count($jobsToShow) > 0) {
-            $jobs_text = !empty($matchedVacancies)
-                ? "PASSENDE STELLENANGEBOTE FÜR IHRE SKILLS:\n\n"
-                : "AKTUELLE STELLENANGEBOTE (Auszug):\n\n";
-
-            foreach ($jobsToShow as $idx => $job) {
-                $jobs_text .= "🔹 " . $job['title'];
-                if (!empty($job['location'])) {
-                    $jobs_text .= "\n   📍 " . $job['location'];
-                }
-                if (!empty($job['experience_level'])) {
-                    $jobs_text .= " | Level: " . $job['experience_level'];
-                }
-                if (!empty($job['required_skills'])) {
-                    $jobs_text .= "\n   💡 Skills: " . implode(', ', array_slice($job['required_skills'], 0, 5));
-                }
-                $jobs_text .= "\n\n";
-            }
-            $jobs_text .= "⚠️ WICHTIG: Dies ist nur ein Auszug unserer aktuellen Vakanzen. Wir haben viele weitere Positionen, die nicht öffentlich ausgeschrieben sind.";
-
-            // Injiziere Jobs als Context
-            $enriched_message = "[CONTEXT-INFO: Der User möchte aktuelle Stellenangebote sehen. Präsentiere folgende Jobs freundlich und professionell:\n\n" . $jobs_text . "\n\nERWARTET: Präsentiere die Jobs übersichtlich, betone dass dies nur ein Auszug ist, und frage welche Position interessiert oder ob der User mehr erfahren möchte.]\n\nUser-Frage: " . $user_message;
-            error_log('✨ Stellenangebote injiziert: ' . count($jobsToShow) . ' Vakanzen');
-        }
-    }
-    // KUNDE FRAGT NACH KANDIDATEN
-    elseif (stripos($user_message, 'kandidat') !== false ||
-            stripos($user_message, 'bewerber') !== false ||
-            stripos($user_message, '👥 Aktuelle Experten') !== false ||
-            stripos($user_message, 'Aktuelle Experten') !== false ||
-            stripos($user_message, 'verfügbare Experten') !== false ||
-            stripos($user_message, 'mitarbeiter') !== false && (stripos($user_message, 'such') !== false || stripos($user_message, 'brauche') !== false)) {
-
-        // Versuche Matching basierend auf User-Message
-        $matchedCandidates = findMatchingCandidates($user_message, $candidates);
-
-        $candidatesToShow = !empty($matchedCandidates) ? $matchedCandidates : array_slice($candidates, 0, 3);
-
-        if ($candidatesToShow && count($candidatesToShow) > 0) {
-            $candidates_text = !empty($matchedCandidates)
-                ? "PASSENDE KANDIDATENPROFILE FÜR IHRE ANFORDERUNGEN:\n\n"
-                : "VERFÜGBARE KANDIDATENPROFILE (Auszug - ANONYMISIERT):\n\n";
-
-            foreach ($candidatesToShow as $idx => $candidate) {
-                $candidates_text .= "👤 KANDIDAT #" . ($idx + 1);
-                if (!empty($candidate['seniority_level'])) {
-                    $candidates_text .= " (" . $candidate['seniority_level'] . ")";
-                }
-                $candidates_text .= "\n";
-
-                if (!empty($candidate['experience_years'])) {
-                    $candidates_text .= "   🎯 Erfahrung: " . $candidate['experience_years'] . " Jahre\n";
-                }
-
-                if (!empty($candidate['skills'])) {
-                    $candidates_text .= "   💡 Skills: " . implode(', ', array_slice($candidate['skills'], 0, 8)) . "\n";
-                }
-
-                if (!empty($candidate['location'])) {
-                    $candidates_text .= "   📍 Region: " . $candidate['location'] . "\n";
-                }
-
-                if (!empty($candidate['availability'])) {
-                    $candidates_text .= "   ⏰ Verfügbarkeit: " . $candidate['availability'] . "\n";
-                }
-
-                // Gekürzte Profil-Beschreibung (erste 150 Zeichen)
-                if (!empty($candidate['anonymized_profile'])) {
-                    $profile_preview = mb_substr($candidate['anonymized_profile'], 0, 150) . '...';
-                    $candidates_text .= "   📝 " . $profile_preview . "\n";
-                }
-
-                $candidates_text .= "\n";
-            }
-            $candidates_text .= "⚠️ WICHTIG: Alle Profile sind DSGVO-konform anonymisiert. Bei Interesse erhalten Sie vollständige Unterlagen nach Unterzeichnung einer Vertraulichkeitsvereinbarung.";
-
-            // Injiziere Kandidaten als Context
-            $enriched_message = "[CONTEXT-INFO: Der User (Kunde/Unternehmen) sucht Kandidaten. Präsentiere folgende anonymisierte Profile professionell:\n\n" . $candidates_text . "\n\nERWARTET: Präsentiere die Kandidaten übersichtlich, erkläre dass alle Profile anonymisiert sind (DSGVO), und frage welches Profil interessiert oder ob mehr Details gewünscht sind.]\n\nUser-Frage: " . $user_message;
-            error_log('✨ Kandidatenprofile injiziert: ' . count($candidatesToShow) . ' Profile');
         }
     }
     // Normale Context-Injektion

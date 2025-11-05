@@ -275,13 +275,67 @@ try {
               " | E-Mail=" . ($contactData['email'] ?? 'N/A') .
               " | Telefon=" . ($contactData['phone'] ?? 'N/A'));
 
+    // ===== AUTOMATISCHES MATCHING =====
+    $matchingResults = null;
+    
+    // Lade Matching-Funktionen aus chatbot-api.php
+    require_once __DIR__ . '/chatbot-api.php';
+    
+    if ($documentType === 'cv') {
+        // CV hochgeladen → Finde passende Jobs
+        $vacancies = fetchCurrentVacancies();
+        $matchedJobs = findMatchingVacancies($extractedText, $vacancies);
+        
+        if (!empty($matchedJobs)) {
+            $matchingResults = [
+                'type' => 'jobs',
+                'count' => count($matchedJobs),
+                'matches' => array_map(function($job) {
+                    return [
+                        'id' => $job['id'],
+                        'title' => $job['title'],
+                        'location' => $job['location'] ?? 'Remote',
+                        'experience_level' => $job['experience_level'] ?? 'Mid',
+                        'skills' => array_slice($job['required_skills'] ?? [], 0, 5),
+                        'description_preview' => mb_substr($job['anonymized_description'] ?? '', 0, 150) . '...'
+                    ];
+                }, array_slice($matchedJobs, 0, 3))
+            ];
+            error_log("✅ CV-Matching: " . count($matchedJobs) . " passende Jobs gefunden");
+        }
+    } elseif ($documentType === 'job_description') {
+        // Stellenbeschreibung hochgeladen → Finde passende Kandidaten
+        $candidates = fetchCandidateProfiles();
+        $matchedCandidates = findMatchingCandidates($extractedText, $candidates);
+        
+        if (!empty($matchedCandidates)) {
+            $matchingResults = [
+                'type' => 'candidates',
+                'count' => count($matchedCandidates),
+                'matches' => array_map(function($candidate, $idx) {
+                    return [
+                        'id' => $candidate['id'],
+                        'label' => 'Kandidat #' . ($idx + 1),
+                        'seniority_level' => $candidate['seniority_level'] ?? 'Mid',
+                        'experience_years' => $candidate['experience_years'] ?? 0,
+                        'skills' => array_slice($candidate['skills'] ?? [], 0, 8),
+                        'location' => $candidate['location'] ?? 'Remote',
+                        'availability' => $candidate['availability'] ?? 'Vollzeit'
+                    ];
+                }, array_slice($matchedCandidates, 0, 3), array_keys(array_slice($matchedCandidates, 0, 3)))
+            ];
+            error_log("✅ Stellen-Matching: " . count($matchedCandidates) . " passende Kandidaten gefunden");
+        }
+    }
+
     // Log upload
     error_log(sprintf(
-        'Document uploaded: Type=%s, Size=%d, Filename=%s, Session=%s',
+        'Document uploaded: Type=%s, Size=%d, Filename=%s, Session=%s, Matches=%s',
         $documentType,
         $file['size'],
         $originalFilename,
-        $sessionId
+        $sessionId,
+        $matchingResults ? $matchingResults['count'] : 0
     ));
 
     // Schedule file deletion (after 2 hours)
@@ -302,7 +356,8 @@ try {
             'delete_at' => $deleteAt,
             'server_filename' => $uniqueFilename,  // Unique filename auf Server
             'server_path' => $filepath,             // Absoluter Pfad zur Datei
-            'contact_data' => $contactData          // Extrahierte Kontaktdaten (Name, E-Mail, Telefon)
+            'contact_data' => $contactData,         // Extrahierte Kontaktdaten (Name, E-Mail, Telefon)
+            'matching_results' => $matchingResults  // Automatisches Matching
         ]
     ]);
 

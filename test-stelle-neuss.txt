@@ -1,0 +1,77 @@
+# STELLENBESCHREIBUNG
+
+## Unternehmen
+Innovative Tech Solutions GmbH
+Standort: Neuss, Nordrhein-Westfalen
+Mitarbeiter: 150+
+Branche: IT-Dienstleistungen & Software-Entwicklung
+
+## Position
+**Senior PHP Developer (m/w/d)**
+Vollzeit | Festanstellung
+Standort: Neuss (Hybrid - 2 Tage/Woche im Büro)
+
+## Über uns
+Wir sind ein führendes IT-Dienstleistungsunternehmen im Raum Düsseldorf/Neuss und entwickeln maßgeschneiderte Software-Lösungen für Unternehmen aus verschiedenen Branchen. Unser Fokus liegt auf E-Commerce, CRM-Systemen und Business-Intelligence-Lösungen.
+
+## Ihre Aufgaben
+
+- Entwicklung und Wartung von PHP-basierten Web-Applikationen
+- Design und Implementierung von RESTful APIs
+- Optimierung bestehender Codebases und Performance-Tuning
+- Technische Konzeption und Architekturentscheidungen
+- Code Reviews und Mentoring von Junior-Entwicklern
+- Enge Zusammenarbeit mit Product Owners und Frontend-Entwicklern
+- Dokumentation von Entwicklungsprozessen
+
+## Ihr Profil
+
+**Muss-Anforderungen:**
+- Mindestens 5 Jahre Erfahrung in der PHP-Entwicklung
+- Sehr gute Kenntnisse in Laravel oder Symfony
+- Erfahrung mit MySQL/PostgreSQL und Datenbankdesign
+- Kenntnisse in RESTful API-Entwicklung
+- Git-Versionskontrolle
+- Agile Arbeitsweise (Scrum/Kanban)
+- Sehr gute Deutschkenntnisse
+
+**Nice-to-Have:**
+- Erfahrung mit Docker und Kubernetes
+- Frontend-Kenntnisse (React, Vue.js)
+- CI/CD Pipelines (GitLab CI, Jenkins)
+- AWS oder Azure Cloud-Erfahrung
+- Elasticsearch, Redis
+- API-Integrationen (Payment Gateways, CRM, ERP)
+
+## Was wir bieten
+
+- Attraktives Gehalt: 60.000 - 80.000 EUR (je nach Erfahrung)
+- 30 Tage Urlaub
+- Flexible Arbeitszeiten & Home-Office-Möglichkeit (Hybrid)
+- Moderne Technik (MacBook Pro, zusätzliche Bildschirme)
+- Weiterbildungsbudget (Konferenzen, Schulungen, Zertifizierungen)
+- Team-Events und gemeinsame Mittagessen
+- Betriebliche Altersvorsorge
+- JobRad und Fitnessstudio-Zuschuss
+- Zentrale Lage in Neuss mit guter ÖPNV-Anbindung
+- Kostenlose Parkplätze
+
+## Bewerbungsprozess
+
+1. Kurzes Telefoninterview (30 Min.)
+2. Technisches Interview mit Code-Review (1-2 Std.)
+3. Meet-the-Team Session (30 Min.)
+4. Vertragsangebot
+
+## Kontakt
+
+Bitte senden Sie Ihre Bewerbungsunterlagen an:
+recruiting@innovative-tech-solutions.de
+
+Oder bewerben Sie sich direkt über unser Karriereportal:
+www.innovative-tech-solutions.de/karriere
+
+Kontakt für Rückfragen:
+Laura Schmidt, HR Manager
+Tel: +49 (0)2131 / 123 456 - 78
+E-Mail: l.schmidt@innovative-tech-solutions.de

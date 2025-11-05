@@ -88,6 +88,7 @@ export interface LeadSignals {
 }
 
 export interface ChatRequestPayload {
+  action?: string; // Backend needs 'action=chat'
   session_id: string;
   message: string;
   history: ChatHistoryItem[];

@@ -29,7 +29,20 @@ const handleResponse = async <T>(response: Response, skipJson?: boolean): Promis
     return undefined as T;
   }
 
-  return (await response.json()) as T;
+  const data = await response.json();
+  
+  // Backend sendet {success: true, message: "...", ...}
+  // Frontend erwartet {message: "...", ...}
+  if (data && typeof data === 'object' && 'success' in data) {
+    if (!data.success) {
+      throw new Error(data.error || data.message || 'Request failed');
+    }
+    // Entferne 'success' aus der Response
+    const { success, ...rest } = data;
+    return rest as T;
+  }
+  
+  return data as T;
 };
 
 export const apiClient = {
