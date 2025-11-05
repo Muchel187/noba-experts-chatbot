@@ -123,6 +123,40 @@ switch ($action) {
         handleSendSummaryEmail();
         break;
 
+    // ===== VAKANZEN MANAGEMENT =====
+    case 'upload_vacancy':
+        handleUploadVacancy();
+        break;
+
+    case 'get_vacancies':
+        handleGetVacancies();
+        break;
+
+    case 'update_vacancy':
+        handleUpdateVacancy();
+        break;
+
+    case 'delete_vacancy':
+        handleDeleteVacancy();
+        break;
+
+    // ===== KANDIDATENPROFILE MANAGEMENT =====
+    case 'upload_candidate':
+        handleUploadCandidate();
+        break;
+
+    case 'get_candidates':
+        handleGetCandidates();
+        break;
+
+    case 'update_candidate':
+        handleUpdateCandidate();
+        break;
+
+    case 'delete_candidate':
+        handleDeleteCandidate();
+        break;
+
     default:
         http_response_code(404);
         echo json_encode(['error' => 'Unknown action: ' . $action]);
@@ -2080,5 +2114,637 @@ HTML;
 HTML;
 
     return $html;
+}
+
+// ========================================
+// VAKANZEN & KANDIDATENPROFILE MANAGEMENT
+// ========================================
+
+/**
+ * Lade Vakanzen aus JSON-Datei
+ */
+function loadVacancies() {
+    $file = dirname(__DIR__) . '/vacancies.json';
+    if (!file_exists($file)) return [];
+    $data = json_decode(file_get_contents($file), true);
+    return $data ?? [];
+}
+
+/**
+ * Speichere Vakanzen in JSON-Datei
+ */
+function saveVacancies($vacancies) {
+    $file = dirname(__DIR__) . '/vacancies.json';
+    file_put_contents($file, json_encode($vacancies, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+}
+
+/**
+ * Lade Kandidatenprofile aus JSON-Datei
+ */
+function loadCandidates() {
+    $file = dirname(__DIR__) . '/candidate-profiles.json';
+    if (!file_exists($file)) return [];
+    $data = json_decode(file_get_contents($file), true);
+    return $data ?? [];
+}
+
+/**
+ * Speichere Kandidatenprofile in JSON-Datei
+ */
+function saveCandidates($candidates) {
+    $file = dirname(__DIR__) . '/candidate-profiles.json';
+    file_put_contents($file, json_encode($candidates, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+}
+
+/**
+ * Extrahiere Text aus PDF-Datei
+ */
+function extractTextFromPDF($filepath) {
+    // Methode 1: pdftotext (wenn auf Server verfügbar)
+    $output = shell_exec("pdftotext " . escapeshellarg($filepath) . " -");
+    if ($output) return $output;
+
+    // Methode 2: Fallback - Einfache PDF-Textextraktion
+    $content = file_get_contents($filepath);
+    $text = '';
+
+    // Sehr einfache PDF-Textextraktion (funktioniert nicht bei allen PDFs)
+    if (preg_match_all('/\(([^)]+)\)/i', $content, $matches)) {
+        $text = implode(' ', $matches[1]);
+    }
+
+    return $text ?: 'Text konnte nicht extrahiert werden. Bitte manuelle Eingabe nutzen.';
+}
+
+/**
+ * Extrahiere Text aus DOCX-Datei
+ */
+function extractTextFromDOCX($filepath) {
+    $zip = new ZipArchive;
+    $text = '';
+
+    if ($zip->open($filepath) === TRUE) {
+        $xml = $zip->getFromName('word/document.xml');
+        $zip->close();
+
+        if ($xml) {
+            $xml = str_replace('</w:p>', "\n", $xml);
+            $text = strip_tags($xml);
+        }
+    }
+
+    return $text ?: 'Text konnte nicht extrahiert werden. Bitte manuelle Eingabe nutzen.';
+}
+
+/**
+ * KI-basierte Anonymisierung und Datenextraktion für Stellenbeschreibungen
+ * DSGVO-konform: Entfernt Firmennamen, Kontaktdaten, spezifische Standorte
+ */
+function anonymizeAndExtractVacancy($text) {
+    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A';
+    $model = 'gemini-2.0-flash-exp';
+
+    $prompt = "Du bist ein DSGVO-Experte für IT-Recruiting. Analysiere diese Stellenbeschreibung und erstelle eine ANONYMISIERTE Version.
+
+**ORIGINAL-TEXT:**
+$text
+
+**AUFGABE:**
+1. **ANONYMISIERUNG (DSGVO-konform):**
+   - Entferne ALLE Firmennamen, Markennamen, Produktnamen
+   - Ersetze spezifische Standorte durch allgemeine Regionen (z.B. \"München\" → \"Raum München\", \"Berlin-Mitte\" → \"Berlin\")
+   - Entferne Kontaktdaten (E-Mail, Telefon, URLs)
+   - Entferne firmenspezifische Details (Gründungsjahr, Mitarbeiterzahl, etc.)
+   - Behalte nur: Position, Skills, Anforderungen, Aufgaben, Benefits (allgemein formuliert)
+
+2. **STRUKTURIERTE DATEN EXTRAHIEREN:**
+   - Position/Titel
+   - Required Skills (als Array)
+   - Nice-to-have Skills (als Array)
+   - Erfahrungslevel (Junior/Mid/Senior/Lead)
+   - Standort (nur Region, z.B. \"Remote\", \"Berlin\", \"Raum München\")
+   - Gehaltsrange (falls erwähnt)
+   - Vertragsart (Festanstellung/Freelance/Hybrid)
+   - Remote-Möglichkeit (Ja/Nein/Hybrid)
+
+**ANTWORT-FORMAT (nur JSON):**
+```json
+{
+  \"anonymized_description\": \"Vollständig anonymisierte Stellenbeschreibung als Fließtext\",
+  \"title\": \"Positionstitel\",
+  \"required_skills\": [\"Skill1\", \"Skill2\", ...],
+  \"nice_to_have_skills\": [\"Skill1\", \"Skill2\", ...],
+  \"experience_level\": \"Junior/Mid/Senior/Lead\",
+  \"location\": \"Region ohne Details\",
+  \"salary_range\": \"z.B. 60.000-80.000 EUR oder null\",
+  \"employment_type\": \"Festanstellung/Freelance/Hybrid\",
+  \"remote_option\": \"Ja/Nein/Hybrid\",
+  \"key_responsibilities\": [\"Aufgabe 1\", \"Aufgabe 2\", ...]
+}
+```
+
+WICHTIG: Antworte NUR mit dem JSON-Objekt!";
+
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$api_key";
+
+    $data = [
+        'contents' => [
+            [
+                'parts' => [
+                    ['text' => $prompt]
+                ]
+            ]
+        ],
+        'generationConfig' => [
+            'temperature' => 0.2,
+            'maxOutputTokens' => 2000,
+        ],
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($http_code !== 200) {
+        error_log("Gemini API Error (Vacancy): HTTP $http_code - $response");
+        return null;
+    }
+
+    $result = json_decode($response, true);
+    $ai_text = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
+
+    // JSON extrahieren
+    $ai_text = trim($ai_text);
+    $ai_text = preg_replace('/^```json\s*/s', '', $ai_text);
+    $ai_text = preg_replace('/\s*```$/s', '', $ai_text);
+
+    $extracted = json_decode($ai_text, true);
+
+    if (!$extracted) {
+        error_log("Failed to parse AI response (Vacancy): $ai_text");
+        return null;
+    }
+
+    return $extracted;
+}
+
+/**
+ * KI-basierte Anonymisierung und Datenextraktion für CVs
+ * DSGVO-konform: Entfernt Namen, Adressen, Kontaktdaten, spezifische Firmennamen
+ */
+function anonymizeAndExtractCandidate($text) {
+    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A';
+    $model = 'gemini-2.0-flash-exp';
+
+    $prompt = "Du bist ein DSGVO-Experte für IT-Recruiting. Analysiere diesen Lebenslauf und erstelle eine ANONYMISIERTE Version.
+
+**ORIGINAL-TEXT:**
+$text
+
+**AUFGABE:**
+1. **ANONYMISIERUNG (DSGVO-konform):**
+   - Entferne ALLE persönlichen Daten: Name, Geburtsdatum, Adresse, E-Mail, Telefon
+   - Entferne spezifische Firmennamen (ersetze durch \"Großes Tech-Unternehmen\", \"Mittelständischer Automobilzulieferer\", etc.)
+   - Entferne Namen von Universitäten/Schulen (ersetze durch \"Technische Universität\", \"Fachhochschule\", etc.)
+   - Behalte nur: Skills, Technologien, Erfahrungsjahre, Branchen, grobe Standort-Region
+   - Zeiträume können bleiben (z.B. \"2020-2023\"), aber ohne spezifische Arbeitgeber
+
+2. **STRUKTURIERTE DATEN EXTRAHIEREN:**
+   - Skills/Technologien (als Array)
+   - Erfahrungsjahre (Gesamt)
+   - Seniority-Level (Junior/Mid/Senior/Lead)
+   - Branchen-Erfahrung
+   - Standort (nur Region)
+   - Verfügbarkeit (Vollzeit/Teilzeit/Freelance)
+   - Sprachkenntnisse
+
+**ANTWORT-FORMAT (nur JSON):**
+```json
+{
+  \"anonymized_profile\": \"Vollständig anonymisierter Lebenslauf als Fließtext (max. 500 Wörter)\",
+  \"skills\": [\"Skill1\", \"Skill2\", ...],
+  \"experience_years\": 5,
+  \"seniority_level\": \"Junior/Mid/Senior/Lead\",
+  \"industries\": [\"Branche1\", \"Branche2\", ...],
+  \"location\": \"Region ohne Details (z.B. 'Berlin', 'Raum München', 'Remote')\",
+  \"availability\": \"Vollzeit/Teilzeit/Freelance\",
+  \"languages\": [\"Deutsch (Muttersprache)\", \"Englisch (Fließend)\", ...],
+  \"key_qualifications\": [\"Qualifikation 1\", \"Qualifikation 2\", ...]
+}
+```
+
+WICHTIG: Antworte NUR mit dem JSON-Objekt!";
+
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$api_key";
+
+    $data = [
+        'contents' => [
+            [
+                'parts' => [
+                    ['text' => $prompt]
+                ]
+            ]
+        ],
+        'generationConfig' => [
+            'temperature' => 0.2,
+            'maxOutputTokens' => 2000,
+        ],
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($http_code !== 200) {
+        error_log("Gemini API Error (Candidate): HTTP $http_code - $response");
+        return null;
+    }
+
+    $result = json_decode($response, true);
+    $ai_text = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
+
+    // JSON extrahieren
+    $ai_text = trim($ai_text);
+    $ai_text = preg_replace('/^```json\s*/s', '', $ai_text);
+    $ai_text = preg_replace('/\s*```$/s', '', $ai_text);
+
+    $extracted = json_decode($ai_text, true);
+
+    if (!$extracted) {
+        error_log("Failed to parse AI response (Candidate): $ai_text");
+        return null;
+    }
+
+    return $extracted;
+}
+
+// ===== VACANCY HANDLERS =====
+
+function handleUploadVacancy() {
+    // Unterstütze sowohl File-Upload als auch direkten Text-Input
+    $rawText = $_POST['raw_text'] ?? '';
+    $file = $_FILES['file'] ?? null;
+
+    $extractedText = '';
+
+    // Option 1: File Upload
+    if ($file && $file['error'] === UPLOAD_ERR_OK) {
+        $filename = $file['name'];
+        $tmpPath = $file['tmp_name'];
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+        if ($extension === 'pdf') {
+            $extractedText = extractTextFromPDF($tmpPath);
+        } elseif ($extension === 'docx') {
+            $extractedText = extractTextFromDOCX($tmpPath);
+        } elseif (in_array($extension, ['txt', 'doc'])) {
+            $extractedText = file_get_contents($tmpPath);
+        } else {
+            http_response_code(400);
+            die(json_encode(['error' => 'Unsupported file type. Please upload PDF, DOCX, or TXT.']));
+        }
+
+        // Original-Dateiname speichern
+        $originalFilename = $filename;
+    }
+    // Option 2: Direkter Text-Input
+    elseif ($rawText) {
+        $extractedText = $rawText;
+        $originalFilename = 'Manual Input';
+    }
+    else {
+        http_response_code(400);
+        die(json_encode(['error' => 'No file or text provided']));
+    }
+
+    // KI-Anonymisierung und Datenextraktion
+    $vacancyData = anonymizeAndExtractVacancy($extractedText);
+
+    if (!$vacancyData) {
+        http_response_code(500);
+        die(json_encode(['error' => 'AI anonymization failed']));
+    }
+
+    // Vakanz-Objekt erstellen
+    $vacancy = [
+        'id' => uniqid('vac_', true),
+        'title' => $vacancyData['title'] ?? 'Unbekannte Position',
+        'anonymized_description' => $vacancyData['anonymized_description'] ?? '',
+        'required_skills' => $vacancyData['required_skills'] ?? [],
+        'nice_to_have_skills' => $vacancyData['nice_to_have_skills'] ?? [],
+        'experience_level' => $vacancyData['experience_level'] ?? 'Mid',
+        'location' => $vacancyData['location'] ?? 'Remote',
+        'salary_range' => $vacancyData['salary_range'] ?? null,
+        'employment_type' => $vacancyData['employment_type'] ?? 'Festanstellung',
+        'remote_option' => $vacancyData['remote_option'] ?? 'Hybrid',
+        'key_responsibilities' => $vacancyData['key_responsibilities'] ?? [],
+        'created_at' => date('c'),
+        'updated_at' => date('c'),
+        'original_filename' => $originalFilename ?? 'Manual Input',
+        'status' => 'active', // active, inactive, filled
+    ];
+
+    // Zu Liste hinzufügen und speichern
+    $vacancies = loadVacancies();
+    $vacancies[] = $vacancy;
+    saveVacancies($vacancies);
+
+    error_log("✅ Neue Vakanz erstellt: {$vacancy['title']} (ID: {$vacancy['id']})");
+
+    echo json_encode([
+        'success' => true,
+        'vacancy' => $vacancy,
+        'message' => 'Vakanz erfolgreich anonymisiert und gespeichert'
+    ]);
+}
+
+function handleGetVacancies() {
+    $vacancies = loadVacancies();
+
+    // Filter-Parameter
+    $status = $_GET['status'] ?? 'all';
+    $search = $_GET['search'] ?? '';
+
+    // Filtern
+    $filtered = array_filter($vacancies, function($vac) use ($status, $search) {
+        if ($status !== 'all' && ($vac['status'] ?? 'active') !== $status) {
+            return false;
+        }
+
+        if ($search) {
+            $searchable = json_encode($vac, JSON_UNESCAPED_UNICODE);
+            if (stripos($searchable, $search) === false) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+
+    // Sortieren (neueste zuerst)
+    usort($filtered, fn($a, $b) => strtotime($b['created_at']) <=> strtotime($a['created_at']));
+
+    echo json_encode([
+        'success' => true,
+        'data' => array_values($filtered),
+        'total' => count($filtered)
+    ]);
+}
+
+function handleUpdateVacancy() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? '';
+    $updates = $input['updates'] ?? [];
+
+    if (!$id) {
+        http_response_code(400);
+        die(json_encode(['error' => 'Missing vacancy ID']));
+    }
+
+    $vacancies = loadVacancies();
+    $found = false;
+
+    foreach ($vacancies as &$vac) {
+        if ($vac['id'] === $id) {
+            // Merge updates
+            foreach ($updates as $key => $value) {
+                $vac[$key] = $value;
+            }
+            $vac['updated_at'] = date('c');
+            $found = true;
+            break;
+        }
+    }
+
+    if (!$found) {
+        http_response_code(404);
+        die(json_encode(['error' => 'Vacancy not found']));
+    }
+
+    saveVacancies($vacancies);
+
+    error_log("✏️ Vakanz aktualisiert: ID {$id}");
+
+    echo json_encode([
+        'success' => true,
+        'message' => 'Vakanz erfolgreich aktualisiert'
+    ]);
+}
+
+function handleDeleteVacancy() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? $_GET['id'] ?? '';
+
+    if (!$id) {
+        http_response_code(400);
+        die(json_encode(['error' => 'Missing vacancy ID']));
+    }
+
+    $vacancies = loadVacancies();
+    $filtered = array_filter($vacancies, fn($vac) => $vac['id'] !== $id);
+
+    if (count($filtered) === count($vacancies)) {
+        http_response_code(404);
+        die(json_encode(['error' => 'Vacancy not found']));
+    }
+
+    saveVacancies(array_values($filtered));
+
+    error_log("🗑️ Vakanz gelöscht: ID {$id}");
+
+    echo json_encode([
+        'success' => true,
+        'message' => 'Vakanz erfolgreich gelöscht'
+    ]);
+}
+
+// ===== CANDIDATE HANDLERS =====
+
+function handleUploadCandidate() {
+    // Unterstütze sowohl File-Upload als auch direkten Text-Input
+    $rawText = $_POST['raw_text'] ?? '';
+    $file = $_FILES['file'] ?? null;
+
+    $extractedText = '';
+
+    // Option 1: File Upload
+    if ($file && $file['error'] === UPLOAD_ERR_OK) {
+        $filename = $file['name'];
+        $tmpPath = $file['tmp_name'];
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+        if ($extension === 'pdf') {
+            $extractedText = extractTextFromPDF($tmpPath);
+        } elseif ($extension === 'docx') {
+            $extractedText = extractTextFromDOCX($tmpPath);
+        } elseif (in_array($extension, ['txt', 'doc'])) {
+            $extractedText = file_get_contents($tmpPath);
+        } else {
+            http_response_code(400);
+            die(json_encode(['error' => 'Unsupported file type. Please upload PDF, DOCX, or TXT.']));
+        }
+
+        $originalFilename = $filename;
+    }
+    // Option 2: Direkter Text-Input
+    elseif ($rawText) {
+        $extractedText = $rawText;
+        $originalFilename = 'Manual Input';
+    }
+    else {
+        http_response_code(400);
+        die(json_encode(['error' => 'No file or text provided']));
+    }
+
+    // KI-Anonymisierung und Datenextraktion
+    $candidateData = anonymizeAndExtractCandidate($extractedText);
+
+    if (!$candidateData) {
+        http_response_code(500);
+        die(json_encode(['error' => 'AI anonymization failed']));
+    }
+
+    // Kandidaten-Objekt erstellen
+    $candidate = [
+        'id' => uniqid('cand_', true),
+        'anonymized_profile' => $candidateData['anonymized_profile'] ?? '',
+        'skills' => $candidateData['skills'] ?? [],
+        'experience_years' => $candidateData['experience_years'] ?? 0,
+        'seniority_level' => $candidateData['seniority_level'] ?? 'Mid',
+        'industries' => $candidateData['industries'] ?? [],
+        'location' => $candidateData['location'] ?? 'Remote',
+        'availability' => $candidateData['availability'] ?? 'Vollzeit',
+        'languages' => $candidateData['languages'] ?? [],
+        'key_qualifications' => $candidateData['key_qualifications'] ?? [],
+        'created_at' => date('c'),
+        'updated_at' => date('c'),
+        'original_filename' => $originalFilename ?? 'Manual Input',
+        'status' => 'available', // available, placed, inactive
+    ];
+
+    // Zu Liste hinzufügen und speichern
+    $candidates = loadCandidates();
+    $candidates[] = $candidate;
+    saveCandidates($candidates);
+
+    error_log("✅ Neues Kandidatenprofil erstellt: {$candidate['seniority_level']} (ID: {$candidate['id']})");
+
+    echo json_encode([
+        'success' => true,
+        'candidate' => $candidate,
+        'message' => 'Kandidatenprofil erfolgreich anonymisiert und gespeichert'
+    ]);
+}
+
+function handleGetCandidates() {
+    $candidates = loadCandidates();
+
+    // Filter-Parameter
+    $status = $_GET['status'] ?? 'all';
+    $search = $_GET['search'] ?? '';
+
+    // Filtern
+    $filtered = array_filter($candidates, function($cand) use ($status, $search) {
+        if ($status !== 'all' && ($cand['status'] ?? 'available') !== $status) {
+            return false;
+        }
+
+        if ($search) {
+            $searchable = json_encode($cand, JSON_UNESCAPED_UNICODE);
+            if (stripos($searchable, $search) === false) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+
+    // Sortieren (neueste zuerst)
+    usort($filtered, fn($a, $b) => strtotime($b['created_at']) <=> strtotime($a['created_at']));
+
+    echo json_encode([
+        'success' => true,
+        'data' => array_values($filtered),
+        'total' => count($filtered)
+    ]);
+}
+
+function handleUpdateCandidate() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? '';
+    $updates = $input['updates'] ?? [];
+
+    if (!$id) {
+        http_response_code(400);
+        die(json_encode(['error' => 'Missing candidate ID']));
+    }
+
+    $candidates = loadCandidates();
+    $found = false;
+
+    foreach ($candidates as &$cand) {
+        if ($cand['id'] === $id) {
+            // Merge updates
+            foreach ($updates as $key => $value) {
+                $cand[$key] = $value;
+            }
+            $cand['updated_at'] = date('c');
+            $found = true;
+            break;
+        }
+    }
+
+    if (!$found) {
+        http_response_code(404);
+        die(json_encode(['error' => 'Candidate not found']));
+    }
+
+    saveCandidates($candidates);
+
+    error_log("✏️ Kandidatenprofil aktualisiert: ID {$id}");
+
+    echo json_encode([
+        'success' => true,
+        'message' => 'Kandidatenprofil erfolgreich aktualisiert'
+    ]);
+}
+
+function handleDeleteCandidate() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? $_GET['id'] ?? '';
+
+    if (!$id) {
+        http_response_code(400);
+        die(json_encode(['error' => 'Missing candidate ID']));
+    }
+
+    $candidates = loadCandidates();
+    $filtered = array_filter($candidates, fn($cand) => $cand['id'] !== $id);
+
+    if (count($filtered) === count($candidates)) {
+        http_response_code(404);
+        die(json_encode(['error' => 'Candidate not found']));
+    }
+
+    saveCandidates(array_values($filtered));
+
+    error_log("🗑️ Kandidatenprofil gelöscht: ID {$id}");
+
+    echo json_encode([
+        'success' => true,
+        'message' => 'Kandidatenprofil erfolgreich gelöscht'
+    ]);
 }
 ?>

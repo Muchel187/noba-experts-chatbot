@@ -176,94 +176,177 @@ function fetchHomepageContent() {
 }
 
 // ===== AKTUELLE STELLENANGEBOTE FETCHEN =====
-function fetchCurrentJobs() {
-    static $cache = null;
-    static $cache_time = 0;
+// ===== VAKANZEN AUS JSON LADEN (DSGVO-konform anonymisiert) =====
+function fetchCurrentVacancies() {
+    $file = __DIR__ . '/../vacancies.json';
 
-    // Cache für 1 Stunde (3600 Sekunden)
-    if ($cache !== null && (time() - $cache_time) < 3600) {
-        return $cache;
+    if (!file_exists($file)) {
+        error_log('⚠️ Keine Vakanzen-Datei gefunden');
+        return [];
     }
 
-    try {
-        $url = 'https://www.noba-experts.de/#jobs';
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Falls SSL-Probleme
-        $html = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+    $data = json_decode(file_get_contents($file), true);
 
-        if ($http_code !== 200 || !$html) {
-            error_log('⚠️ Konnte Stellenangebote nicht laden: HTTP ' . $http_code);
-            return null;
+    if (!$data) {
+        error_log('⚠️ Vakanzen-Datei konnte nicht gelesen werden');
+        return [];
+    }
+
+    // Nur aktive Vakanzen zurückgeben
+    $activeVacancies = array_filter($data, fn($v) => ($v['status'] ?? 'active') === 'active');
+
+    error_log('✅ Vakanzen geladen: ' . count($activeVacancies) . ' aktive Stellen');
+
+    return array_values($activeVacancies);
+}
+
+// ===== KANDIDATENPROFILE AUS JSON LADEN (DSGVO-konform anonymisiert) =====
+function fetchCandidateProfiles() {
+    $file = __DIR__ . '/../candidate-profiles.json';
+
+    if (!file_exists($file)) {
+        error_log('⚠️ Keine Kandidatenprofile-Datei gefunden');
+        return [];
+    }
+
+    $data = json_decode(file_get_contents($file), true);
+
+    if (!$data) {
+        error_log('⚠️ Kandidatenprofile-Datei konnte nicht gelesen werden');
+        return [];
+    }
+
+    // Nur verfügbare Kandidaten zurückgeben
+    $availableCandidates = array_filter($data, fn($c) => ($c['status'] ?? 'available') === 'available');
+
+    error_log('✅ Kandidatenprofile geladen: ' . count($availableCandidates) . ' verfügbare Profile');
+
+    return array_values($availableCandidates);
+}
+
+// ===== MATCHING: Finde passende Vakanzen für Kandidaten =====
+function findMatchingVacancies($userMessage, $vacancies) {
+    if (empty($vacancies)) {
+        return [];
+    }
+
+    $lower = strtolower($userMessage);
+    $matches = [];
+
+    // Extrahiere Skills aus User-Nachricht
+    $commonSkills = [
+        'php', 'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node',
+        'docker', 'kubernetes', 'aws', 'azure', 'devops', 'cloud', 'ci/cd',
+        'sql', 'mysql', 'postgresql', 'mongodb', 'redis',
+        'embedded', 'c++', 'c#', 'rust', 'golang', 'typescript',
+        'machine learning', 'ai', 'data science', 'big data',
+        'scrum', 'agile', 'kanban', 'project management'
+    ];
+
+    $userSkills = [];
+    foreach ($commonSkills as $skill) {
+        if (stripos($lower, $skill) !== false) {
+            $userSkills[] = strtolower($skill);
         }
+    }
 
-        // Extrahiere Job-Karten (vereinfachtes Pattern für typische Job-Listings)
-        $jobs = [];
+    // Score jede Vakanz
+    foreach ($vacancies as $vacancy) {
+        $score = 0;
+        $requiredSkills = array_map('strtolower', $vacancy['required_skills'] ?? []);
+        $niceToHaveSkills = array_map('strtolower', $vacancy['nice_to_have_skills'] ?? []);
 
-        // Pattern 1: Versuche <h3> oder <h2> Tags mit Job-Titeln zu finden
-        if (preg_match_all('/<h[23][^>]*class="[^"]*job[^"]*"[^>]*>(.*?)<\/h[23]>/is', $html, $matches)) {
-            foreach ($matches[1] as $title) {
-                $jobs[] = ['title' => strip_tags(trim($title))];
+        // Skill-Matching
+        foreach ($userSkills as $userSkill) {
+            if (in_array($userSkill, $requiredSkills)) {
+                $score += 10; // Required Skills = hohe Priorität
+            } elseif (in_array($userSkill, $niceToHaveSkills)) {
+                $score += 5; // Nice-to-have = mittlere Priorität
             }
         }
 
-        // Pattern 2: Falls kein spezifisches Pattern, versuche allgemeine Struktur
-        if (empty($jobs)) {
-            // Extrahiere alle <article> oder <div class="job"> Elemente
-            if (preg_match_all('/<(?:article|div)[^>]*(?:class="[^"]*(?:job|position|vacancy)[^"]*")[^>]*>(.*?)<\/(?:article|div)>/is', $html, $matches)) {
-                foreach ($matches[1] as $job_html) {
-                    // Extrahiere ersten h2/h3 Tag als Titel
-                    if (preg_match('/<h[23][^>]*>(.*?)<\/h[23]>/is', $job_html, $title_match)) {
-                        $title = strip_tags(trim($title_match[1]));
-                        // Extrahiere zusätzliche Infos (Ort, Typ)
-                        $details = '';
-                        if (preg_match('/<p[^>]*>(.*?)<\/p>/is', $job_html, $details_match)) {
-                            $details = strip_tags(trim($details_match[1]));
-                        }
-
-                        $jobs[] = [
-                            'title' => $title,
-                            'details' => $details
-                        ];
-                    }
-                }
+        // Keyword-Matching im Titel/Beschreibung
+        $searchableText = strtolower($vacancy['title'] . ' ' . ($vacancy['anonymized_description'] ?? ''));
+        foreach ($userSkills as $userSkill) {
+            if (stripos($searchableText, $userSkill) !== false) {
+                $score += 3;
             }
         }
 
-        // Fallback: Wenn keine Jobs gefunden, verwende bekannte Positionen
-        if (empty($jobs)) {
-            error_log('⚠️ Keine Jobs via HTML-Parsing gefunden, verwende Fallback');
-            $jobs = [
-                ['title' => 'General Manager Europe', 'details' => 'Remote / Europa, Vollzeit'],
-                ['title' => 'Vertriebsmitarbeiter im Außendienst', 'details' => 'Kreis Düsseldorf, Vollzeit'],
-                ['title' => 'Software-Ingenieur Embedded Systems', 'details' => 'Neuss, Vollzeit'],
-                ['title' => 'Technischer Einkäufer', 'details' => 'Aachen, Vollzeit']
+        if ($score > 0) {
+            $matches[] = [
+                'vacancy' => $vacancy,
+                'score' => $score
             ];
         }
-
-        // Limitiere auf erste 5 Jobs
-        $jobs = array_slice($jobs, 0, 5);
-
-        $cache = $jobs;
-        $cache_time = time();
-
-        error_log('✅ Stellenangebote geladen: ' . count($jobs) . ' Jobs');
-        return $jobs;
-
-    } catch (Exception $e) {
-        error_log('⚠️ Fehler beim Fetchen der Stellenangebote: ' . $e->getMessage());
-        // Fallback
-        return [
-            ['title' => 'General Manager Europe', 'details' => 'Remote / Europa, Vollzeit'],
-            ['title' => 'Vertriebsmitarbeiter im Außendienst', 'details' => 'Kreis Düsseldorf, Vollzeit'],
-            ['title' => 'Software-Ingenieur Embedded Systems', 'details' => 'Neuss, Vollzeit'],
-            ['title' => 'Technischer Einkäufer', 'details' => 'Aachen, Vollzeit']
-        ];
     }
+
+    // Sortiere nach Score (höchste zuerst)
+    usort($matches, fn($a, $b) => $b['score'] <=> $a['score']);
+
+    // Gib Top 5 zurück
+    return array_slice(array_column($matches, 'vacancy'), 0, 5);
+}
+
+// ===== MATCHING: Finde passende Kandidaten für Unternehmen =====
+function findMatchingCandidates($userMessage, $candidates) {
+    if (empty($candidates)) {
+        return [];
+    }
+
+    $lower = strtolower($userMessage);
+    $matches = [];
+
+    // Extrahiere Skills aus User-Nachricht (Kunde beschreibt was er sucht)
+    $commonSkills = [
+        'php', 'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node',
+        'docker', 'kubernetes', 'aws', 'azure', 'devops', 'cloud', 'ci/cd',
+        'sql', 'mysql', 'postgresql', 'mongodb', 'redis',
+        'embedded', 'c++', 'c#', 'rust', 'golang', 'typescript',
+        'machine learning', 'ai', 'data science', 'big data',
+        'scrum', 'agile', 'kanban', 'project management'
+    ];
+
+    $requestedSkills = [];
+    foreach ($commonSkills as $skill) {
+        if (stripos($lower, $skill) !== false) {
+            $requestedSkills[] = strtolower($skill);
+        }
+    }
+
+    // Score jeden Kandidaten
+    foreach ($candidates as $candidate) {
+        $score = 0;
+        $candidateSkills = array_map('strtolower', $candidate['skills'] ?? []);
+
+        // Skill-Matching
+        foreach ($requestedSkills as $reqSkill) {
+            if (in_array($reqSkill, $candidateSkills)) {
+                $score += 10;
+            }
+        }
+
+        // Keyword-Matching im Profil
+        $searchableText = strtolower(($candidate['anonymized_profile'] ?? ''));
+        foreach ($requestedSkills as $reqSkill) {
+            if (stripos($searchableText, $reqSkill) !== false) {
+                $score += 5;
+            }
+        }
+
+        if ($score > 0) {
+            $matches[] = [
+                'candidate' => $candidate,
+                'score' => $score
+            ];
+        }
+    }
+
+    // Sortiere nach Score (höchste zuerst)
+    usort($matches, fn($a, $b) => $b['score'] <=> $a['score']);
+
+    // Gib Top 3 zurück
+    return array_slice(array_column($matches, 'candidate'), 0, 3);
 }
 
 function getRelevantContext($message) {
@@ -947,6 +1030,24 @@ WICHTIG: Nutze genau diese Struktur mit Emojis und Bulletpoints!
 **Kandidaten (kostenfrei):** Karriereberatung, Zugang zum verdeckten Stellenmarkt (viele Top-Positionen nicht öffentlich), KI-Coach (test.noba-experts.de)
 **Bereiche:** IT (Cloud, DevOps, Software), Engineering (Automotive, Embedded)
 
+## NEUE FUNKTIONEN (WICHTIG!)
+**VAKANZEN-DATENBANK:**
+- Du hast Zugriff auf aktuelle, anonymisierte Stellenangebote
+- Wenn Kandidaten nach Jobs fragen, zeige passende Vakanzen
+- Skills werden automatisch gematcht
+- Alle Stellenbeschreibungen sind DSGVO-konform anonymisiert (keine Firmennamen)
+
+**KANDIDATEN-DATENBANK:**
+- Du hast Zugriff auf anonymisierte Kandidatenprofile
+- Wenn Unternehmen nach Kandidaten fragen, zeige passende Profile
+- Alle Profile sind DSGVO-konform anonymisiert (keine Namen, Adressen, persönlichen Daten)
+- Erkläre immer, dass vollständige Unterlagen nach NDA verfügbar sind
+
+**DATENSCHUTZ & DSGVO - KRITISCH:**
+- KEINE Informationen über nicht-anonymisierte Daten
+- ALLE Kandidatenprofile sind anonymisiert - erkläre das immer wenn du Profile zeigst
+- Bei Interesse an Kandidaten: 'Vollständige Unterlagen erhalten Sie nach Unterzeichnung einer Vertraulichkeitsvereinbarung'
+
 ## KONTAKT (nach Qualifizierung)
 Tel: +49 211 975 324 74
 E-Mail: Jurak.Bahrambaek@noba-experts.de
@@ -1101,19 +1202,38 @@ try {
     $context_type = getRelevantContext($user_message);
     $enriched_message = $user_message;
 
-    // SPEZIALBEHANDLUNG: Aktuelle Stellenangebote
+    // SPEZIALBEHANDLUNG: Aktuelle Stellenangebote & Matching
+    $vacancies = fetchCurrentVacancies();
+    $candidates = fetchCandidateProfiles();
+
+    // KANDIDAT FRAGT NACH JOBS
     if (stripos($user_message, 'Aktuelle Stellenangebote') !== false ||
         stripos($user_message, 'Aktuelle Stellen') !== false ||
         stripos($user_message, '💼 Aktuelle Stellenangebote') !== false ||
-        stripos($user_message, '💼 Aktuelle Stellen') !== false) {
+        stripos($user_message, '💼 Aktuelle Stellen') !== false ||
+        stripos($user_message, 'job') !== false ||
+        stripos($user_message, 'stelle') !== false) {
 
-        $jobs = fetchCurrentJobs();
-        if ($jobs && count($jobs) > 0) {
-            $jobs_text = "AKTUELLE STELLENANGEBOTE (Auszug):\n\n";
-            foreach ($jobs as $idx => $job) {
+        // Versuche Matching basierend auf User-Message
+        $matchedVacancies = findMatchingVacancies($user_message, $vacancies);
+
+        $jobsToShow = !empty($matchedVacancies) ? $matchedVacancies : array_slice($vacancies, 0, 5);
+
+        if ($jobsToShow && count($jobsToShow) > 0) {
+            $jobs_text = !empty($matchedVacancies)
+                ? "PASSENDE STELLENANGEBOTE FÜR IHRE SKILLS:\n\n"
+                : "AKTUELLE STELLENANGEBOTE (Auszug):\n\n";
+
+            foreach ($jobsToShow as $idx => $job) {
                 $jobs_text .= "🔹 " . $job['title'];
-                if (!empty($job['details'])) {
-                    $jobs_text .= "\n   📍 " . $job['details'];
+                if (!empty($job['location'])) {
+                    $jobs_text .= "\n   📍 " . $job['location'];
+                }
+                if (!empty($job['experience_level'])) {
+                    $jobs_text .= " | Level: " . $job['experience_level'];
+                }
+                if (!empty($job['required_skills'])) {
+                    $jobs_text .= "\n   💡 Skills: " . implode(', ', array_slice($job['required_skills'], 0, 5));
                 }
                 $jobs_text .= "\n\n";
             }
@@ -1121,7 +1241,60 @@ try {
 
             // Injiziere Jobs als Context
             $enriched_message = "[CONTEXT-INFO: Der User möchte aktuelle Stellenangebote sehen. Präsentiere folgende Jobs freundlich und professionell:\n\n" . $jobs_text . "\n\nERWARTET: Präsentiere die Jobs übersichtlich, betone dass dies nur ein Auszug ist, und frage welche Position interessiert oder ob der User mehr erfahren möchte.]\n\nUser-Frage: " . $user_message;
-            error_log('✨ Stellenangebote injiziert: ' . count($jobs) . ' Jobs');
+            error_log('✨ Stellenangebote injiziert: ' . count($jobsToShow) . ' Vakanzen');
+        }
+    }
+    // KUNDE FRAGT NACH KANDIDATEN
+    elseif (stripos($user_message, 'kandidat') !== false ||
+            stripos($user_message, 'bewerber') !== false ||
+            stripos($user_message, 'mitarbeiter') !== false && (stripos($user_message, 'such') !== false || stripos($user_message, 'brauche') !== false)) {
+
+        // Versuche Matching basierend auf User-Message
+        $matchedCandidates = findMatchingCandidates($user_message, $candidates);
+
+        $candidatesToShow = !empty($matchedCandidates) ? $matchedCandidates : array_slice($candidates, 0, 3);
+
+        if ($candidatesToShow && count($candidatesToShow) > 0) {
+            $candidates_text = !empty($matchedCandidates)
+                ? "PASSENDE KANDIDATENPROFILE FÜR IHRE ANFORDERUNGEN:\n\n"
+                : "VERFÜGBARE KANDIDATENPROFILE (Auszug - ANONYMISIERT):\n\n";
+
+            foreach ($candidatesToShow as $idx => $candidate) {
+                $candidates_text .= "👤 KANDIDAT #" . ($idx + 1);
+                if (!empty($candidate['seniority_level'])) {
+                    $candidates_text .= " (" . $candidate['seniority_level'] . ")";
+                }
+                $candidates_text .= "\n";
+
+                if (!empty($candidate['experience_years'])) {
+                    $candidates_text .= "   🎯 Erfahrung: " . $candidate['experience_years'] . " Jahre\n";
+                }
+
+                if (!empty($candidate['skills'])) {
+                    $candidates_text .= "   💡 Skills: " . implode(', ', array_slice($candidate['skills'], 0, 8)) . "\n";
+                }
+
+                if (!empty($candidate['location'])) {
+                    $candidates_text .= "   📍 Region: " . $candidate['location'] . "\n";
+                }
+
+                if (!empty($candidate['availability'])) {
+                    $candidates_text .= "   ⏰ Verfügbarkeit: " . $candidate['availability'] . "\n";
+                }
+
+                // Gekürzte Profil-Beschreibung (erste 150 Zeichen)
+                if (!empty($candidate['anonymized_profile'])) {
+                    $profile_preview = mb_substr($candidate['anonymized_profile'], 0, 150) . '...';
+                    $candidates_text .= "   📝 " . $profile_preview . "\n";
+                }
+
+                $candidates_text .= "\n";
+            }
+            $candidates_text .= "⚠️ WICHTIG: Alle Profile sind DSGVO-konform anonymisiert. Bei Interesse erhalten Sie vollständige Unterlagen nach Unterzeichnung einer Vertraulichkeitsvereinbarung.";
+
+            // Injiziere Kandidaten als Context
+            $enriched_message = "[CONTEXT-INFO: Der User (Kunde/Unternehmen) sucht Kandidaten. Präsentiere folgende anonymisierte Profile professionell:\n\n" . $candidates_text . "\n\nERWARTET: Präsentiere die Kandidaten übersichtlich, erkläre dass alle Profile anonymisiert sind (DSGVO), und frage welches Profil interessiert oder ob mehr Details gewünscht sind.]\n\nUser-Frage: " . $user_message;
+            error_log('✨ Kandidatenprofile injiziert: ' . count($candidatesToShow) . ' Profile');
         }
     }
     // Normale Context-Injektion
