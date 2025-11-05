@@ -155,13 +155,6 @@ switch ($action) {
 
     case 'delete_candidate':
         handleDeleteCandidate();
-    case match_candidates_to_vacancy:
-        handleMatchCandidatesToVacancy();
-        break;
-
-    case match_vacancies_to_candidate:
-        handleMatchVacanciesToCandidate();
-        break;
         break;
 
     // ===== PROJEKT-ANALYSE =====
@@ -2994,10 +2987,6 @@ function handleSaveInterest() {
 }
 
 /**
- * Alle Matches abrufen (für Admin Dashboard)
- */
-
-/**
  * Neues Match erstellen (für Admin Dashboard)
  */
 function handleCreateMatch() {
@@ -3107,6 +3096,9 @@ function calculateMatchScore($candidate, $vacancy) {
     return min($score, 100); // Max 100%
 }
 
+/**
+ * Alle Matches abrufen (für Admin Dashboard)
+ */
 function handleGetMatches() {
     $matches = loadMatches();
     
@@ -3549,242 +3541,4 @@ function handleAnalyzeProject() {
     ]);
 }
 
-?>
-
-// ===== MATCHING FUNCTIONS =====
-
-function handleMatchCandidatesToVacancy() {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $vacancyId = $input['vacancy_id'] ?? '';
-
-    if (!$vacancyId) {
-        http_response_code(400);
-        die(json_encode(['error' => 'Missing vacancy_id']));
-    }
-
-    // Lade Vakanz
-    $vacancies = loadVacancies();
-    $vacancy = null;
-    foreach ($vacancies as $v) {
-        if ($v['id'] === $vacancyId) {
-            $vacancy = $v;
-            break;
-        }
-    }
-
-    if (!$vacancy) {
-        http_response_code(404);
-        die(json_encode(['error' => 'Vacancy not found']));
-    }
-
-    // Lade Kandidaten
-    $candidates = loadCandidates();
-    $matches = [];
-
-    // Matching-Algorithmus
-    foreach ($candidates as $candidate) {
-        $score = 0;
-        $matchedSkills = [];
-        $missingSkills = [];
-
-        // Required Skills matching
-        foreach ($vacancy['required_skills'] as $requiredSkill) {
-            $found = false;
-            foreach ($candidate['skills'] as $candidateSkill) {
-                if (stripos($candidateSkill, $requiredSkill) !== false || stripos($requiredSkill, $candidateSkill) !== false) {
-                    $score += 10;
-                    $matchedSkills[] = $requiredSkill;
-                    $found = true;
-                    break;
-                }
-            }
-            if (!$found) {
-                $missingSkills[] = $requiredSkill;
-            }
-        }
-
-        // Nice-to-have Skills matching
-        foreach ($vacancy['nice_to_have_skills'] as $niceSkill) {
-            foreach ($candidate['skills'] as $candidateSkill) {
-                if (stripos($candidateSkill, $niceSkill) !== false || stripos($niceSkill, $candidateSkill) !== false) {
-                    $score += 5;
-                    break;
-                }
-            }
-        }
-
-        // Experience Level matching
-        $expLevelMatch = false;
-        $vacancyLevel = strtolower($vacancy['experience_level'] ?? '');
-        $candidateLevel = strtolower($candidate['seniority_level'] ?? '');
-        
-        $levelRanks = ['junior' => 1, 'mid' => 2, 'senior' => 3, 'lead' => 4];
-        $vacancyRank = $levelRanks[$vacancyLevel] ?? 2;
-        $candidateRank = $levelRanks[$candidateLevel] ?? 2;
-        
-        if ($candidateRank >= $vacancyRank) {
-            $score += 15;
-            $expLevelMatch = true;
-        } elseif ($candidateRank === $vacancyRank - 1) {
-            $score += 5; // One level below
-            $expLevelMatch = true;
-        }
-
-        // Location matching (basic)
-        if (!empty($vacancy['location']) && !empty($candidate['location'])) {
-            $vacLoc = strtolower($vacancy['location']);
-            $candLoc = strtolower($candidate['location']);
-            
-            if (stripos($vacLoc, 'remote') !== false || stripos($candLoc, 'remote') !== false) {
-                $score += 5;
-            } elseif (stripos($vacLoc, $candLoc) !== false || stripos($candLoc, $vacLoc) !== false) {
-                $score += 10;
-            }
-        }
-
-        // Nur Kandidaten mit Score > 0 zurückgeben
-        if ($score > 0) {
-            $matches[] = [
-                'candidate' => $candidate,
-                'score' => $score,
-                'matched_skills' => $matchedSkills,
-                'missing_skills' => $missingSkills,
-                'experience_match' => $expLevelMatch,
-                'match_percentage' => min(100, round(($score / (count($vacancy['required_skills']) * 10 + 20)) * 100))
-            ];
-        }
-    }
-
-    // Sortiere nach Score (höchste zuerst)
-    usort($matches, fn($a, $b) => $b['score'] <=> $a['score']);
-
-    echo json_encode([
-        'success' => true,
-        'vacancy' => $vacancy,
-        'matches' => $matches,
-        'total' => count($matches)
-    ]);
-}
-
-function handleMatchVacanciesToCandidate() {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $candidateId = $input['candidate_id'] ?? '';
-
-    if (!$candidateId) {
-        http_response_code(400);
-        die(json_encode(['error' => 'Missing candidate_id']));
-    }
-
-    // Lade Kandidat
-    $candidates = loadCandidates();
-    $candidate = null;
-    foreach ($candidates as $c) {
-        if ($c['id'] === $candidateId) {
-            $candidate = $c;
-            break;
-        }
-    }
-
-    if (!$candidate) {
-        http_response_code(404);
-        die(json_encode(['error' => 'Candidate not found']));
-    }
-
-    // Lade Vakanzen
-    $vacancies = loadVacancies();
-    $matches = [];
-
-    // Matching-Algorithmus
-    foreach ($vacancies as $vacancy) {
-        $score = 0;
-        $matchedSkills = [];
-        $missingSkills = [];
-
-        // Candidate Skills gegen Required Skills
-        foreach ($candidate['skills'] as $candidateSkill) {
-            foreach ($vacancy['required_skills'] as $requiredSkill) {
-                if (stripos($candidateSkill, $requiredSkill) !== false || stripos($requiredSkill, $candidateSkill) !== false) {
-                    $score += 10;
-                    $matchedSkills[] = $requiredSkill;
-                    break;
-                }
-            }
-        }
-
-        // Check missing required skills
-        foreach ($vacancy['required_skills'] as $requiredSkill) {
-            $found = false;
-            foreach ($candidate['skills'] as $candidateSkill) {
-                if (stripos($candidateSkill, $requiredSkill) !== false || stripos($requiredSkill, $candidateSkill) !== false) {
-                    $found = true;
-                    break;
-                }
-            }
-            if (!$found) {
-                $missingSkills[] = $requiredSkill;
-            }
-        }
-
-        // Nice-to-have Skills
-        foreach ($candidate['skills'] as $candidateSkill) {
-            foreach ($vacancy['nice_to_have_skills'] as $niceSkill) {
-                if (stripos($candidateSkill, $niceSkill) !== false || stripos($niceSkill, $candidateSkill) !== false) {
-                    $score += 5;
-                    break;
-                }
-            }
-        }
-
-        // Experience Level matching
-        $expLevelMatch = false;
-        $vacancyLevel = strtolower($vacancy['experience_level'] ?? '');
-        $candidateLevel = strtolower($candidate['seniority_level'] ?? '');
-        
-        $levelRanks = ['junior' => 1, 'mid' => 2, 'senior' => 3, 'lead' => 4];
-        $vacancyRank = $levelRanks[$vacancyLevel] ?? 2;
-        $candidateRank = $levelRanks[$candidateLevel] ?? 2;
-        
-        if ($candidateRank >= $vacancyRank) {
-            $score += 15;
-            $expLevelMatch = true;
-        } elseif ($candidateRank === $vacancyRank - 1) {
-            $score += 5;
-            $expLevelMatch = true;
-        }
-
-        // Location matching
-        if (!empty($vacancy['location']) && !empty($candidate['location'])) {
-            $vacLoc = strtolower($vacancy['location']);
-            $candLoc = strtolower($candidate['location']);
-            
-            if (stripos($vacLoc, 'remote') !== false || stripos($candLoc, 'remote') !== false) {
-                $score += 5;
-            } elseif (stripos($vacLoc, $candLoc) !== false || stripos($candLoc, $vacLoc) !== false) {
-                $score += 10;
-            }
-        }
-
-        // Nur Vakanzen mit Score > 0
-        if ($score > 0) {
-            $matches[] = [
-                'vacancy' => $vacancy,
-                'score' => $score,
-                'matched_skills' => $matchedSkills,
-                'missing_skills' => $missingSkills,
-                'experience_match' => $expLevelMatch,
-                'match_percentage' => min(100, round(($score / (count($vacancy['required_skills']) * 10 + 20)) * 100))
-            ];
-        }
-    }
-
-    // Sortiere nach Score
-    usort($matches, fn($a, $b) => $b['score'] <=> $a['score']);
-
-    echo json_encode([
-        'success' => true,
-        'candidate' => $candidate,
-        'matches' => $matches,
-        'total' => count($matches)
-    ]);
-}
 ?>
