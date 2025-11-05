@@ -1,0 +1,47 @@
+# TEST-PROJEKTBESCHREIBUNG: E-Commerce Platform Relaunch
+
+## Projektübersicht
+Wir planen einen kompletten Relaunch unserer E-Commerce-Plattform mit modernen Cloud-Technologien.
+
+## Technische Anforderungen
+
+### Frontend
+- React/Next.js basierte Single-Page-Application
+- Responsive Design für Mobile & Desktop
+- SEO-Optimierung
+- Performance-Optimierung (Core Web Vitals)
+
+### Backend
+- Microservices-Architektur
+- RESTful APIs
+- Node.js/TypeScript
+- PostgreSQL Datenbank
+- Redis Caching Layer
+
+### DevOps & Infrastructure
+- AWS Cloud Infrastructure (EC2, RDS, S3, CloudFront)
+- Kubernetes Orchestrierung
+- CI/CD Pipeline mit GitLab
+- Monitoring & Logging (Prometheus, Grafana)
+- Security & Compliance (DSGVO)
+
+### Integration
+- Payment Gateway Integration (Stripe, PayPal)
+- CRM Integration (Salesforce)
+- ERP System Anbindung (SAP)
+- Versanddienstleister APIs
+
+## Projektdauer
+Geschätzt 8-12 Monate
+
+## Team-Anforderungen
+Wir benötigen ein erfahrenes Entwicklerteam mit Expertise in:
+- React/Next.js
+- Node.js/TypeScript
+- Kubernetes/Docker
+- AWS Cloud
+- PostgreSQL/Redis
+- Microservices Architecture
+
+## Budget
+Größenordnung: 300.000 - 500.000 EUR

@@ -216,6 +216,8 @@ export const App = () => {
     setChatMessages([welcome]);
     // Set initial quick replies
     setQuickReplies([
+      '💼 Aktuelle Jobs & Projekte',
+      '👥 Aktuelle Experten',
       '👔 Job suchen',
       '🔍 Mitarbeiter finden',
       '💡 Unsere Services'

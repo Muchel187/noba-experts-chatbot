@@ -157,6 +157,40 @@ switch ($action) {
         handleDeleteCandidate();
         break;
 
+    // ===== PROJEKT-ANALYSE =====
+    case 'upload_project':
+        handleUploadProject();
+        break;
+
+    case 'get_projects':
+        handleGetProjects();
+        break;
+
+    case 'update_project':
+        handleUpdateProject();
+        break;
+
+    case 'delete_project':
+        handleDeleteProject();
+        break;
+
+    case 'analyze_project':
+        handleAnalyzeProject();
+        break;
+
+    // ===== MATCHING/INTEREST TRACKING =====
+    case 'save_interest':
+        handleSaveInterest();
+        break;
+
+    case 'get_matches':
+        handleGetMatches();
+        break;
+
+    case 'delete_match':
+        handleDeleteMatch();
+        break;
+
     default:
         http_response_code(404);
         echo json_encode(['error' => 'Unknown action: ' . $action]);
@@ -638,7 +672,8 @@ function handleSyncToHubSpot() {
 // ===== HELPER FUNCTIONS =====
 
 function loadConversations() {
-    $file = dirname(__DIR__) . '/chatbot-conversations.json';
+    // FIX: Logger speichert in backend/, nicht parent directory!
+    $file = __DIR__ . '/chatbot-conversations.json';
     if (!file_exists($file)) return [];
     $data = json_decode(file_get_contents($file), true);
     if (!$data) return [];
@@ -660,7 +695,8 @@ function loadConversations() {
 }
 
 function saveConversations($conversations) {
-    $file = dirname(__DIR__) . '/chatbot-conversations.json';
+    // FIX: Logger speichert in backend/, nicht parent directory!
+    $file = __DIR__ . '/chatbot-conversations.json';
     file_put_contents($file, json_encode($conversations, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 }
 
@@ -742,12 +778,14 @@ function translateTextToGerman($text) {
 }
 
 function translateConversations($conversations) {
+    // DISABLED: Translation was causing API rate limit issues and slowing down dashboard
+    // Most messages are already in German, no need for translation
     foreach ($conversations as &$conv) {
         if (isset($conv['messages']) && is_array($conv['messages'])) {
             foreach ($conv['messages'] as &$msg) {
                 if (isset($msg['text'])) {
-                    // Add German translation
-                    $msg['text_de'] = translateTextToGerman($msg['text']);
+                    // Simply copy text to text_de (already German)
+                    $msg['text_de'] = $msg['text'];
                 }
             }
         }
@@ -2238,6 +2276,24 @@ function saveCandidates($candidates) {
 }
 
 /**
+ * Lade Projekte aus JSON-Datei
+ */
+function loadProjects() {
+    $file = dirname(__DIR__) . '/projects.json';
+    if (!file_exists($file)) return [];
+    $data = json_decode(file_get_contents($file), true);
+    return $data ?? [];
+}
+
+/**
+ * Speichere Projekte in JSON-Datei
+ */
+function saveProjects($projects) {
+    $file = dirname(__DIR__) . '/projects.json';
+    file_put_contents($file, json_encode($projects, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+}
+
+/**
  * Extrahiere Text aus PDF-Datei
  */
 function extractTextFromPDF($filepath) {
@@ -2828,4 +2884,547 @@ function handleDeleteCandidate() {
         'message' => 'Kandidatenprofil erfolgreich gelöscht'
     ]);
 }
+
+// ========================================
+// MATCHING & INTEREST TRACKING
+// ========================================
+
+/**
+ * Lade Matches aus JSON-Datei
+ */
+function loadMatches() {
+    $file = dirname(__DIR__) . '/matches.json';
+    if (!file_exists($file)) return [];
+    $data = json_decode(file_get_contents($file), true);
+    return $data ?? [];
+}
+
+/**
+ * Speichere Matches in JSON-Datei
+ */
+function saveMatches($matches) {
+    $file = dirname(__DIR__) . '/matches.json';
+    file_put_contents($file, json_encode($matches, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+}
+
+/**
+ * Speichere Interesse (von Kandidat oder Kunde)
+ * 
+ * Typen:
+ * - candidate_to_vacancy: Kandidat interessiert sich für Stelle
+ * - customer_to_candidate: Kunde interessiert sich für Kandidaten
+ */
+function handleSaveInterest() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    $type = $input['type'] ?? ''; // 'candidate_to_vacancy' oder 'customer_to_candidate'
+    $user_email = $input['user_email'] ?? '';
+    $user_name = $input['user_name'] ?? 'Unbekannt';
+    $session_id = $input['session_id'] ?? '';
+    $target_id = $input['target_id'] ?? ''; // vacancy_id oder candidate_id
+    $target_title = $input['target_title'] ?? '';
+    $message = $input['message'] ?? ''; // Optional: User-Message die Interesse zeigt
+    
+    if (!$type || !$target_id) {
+        http_response_code(400);
+        die(json_encode(['error' => 'Missing required fields']));
+    }
+    
+    // Match-Objekt erstellen
+    $match = [
+        'id' => uniqid('match_', true),
+        'type' => $type,
+        'user_email' => $user_email,
+        'user_name' => $user_name,
+        'session_id' => $session_id,
+        'target_id' => $target_id,
+        'target_title' => $target_title,
+        'message' => $message,
+        'created_at' => date('c'),
+        'status' => 'new', // new, contacted, rejected, hired
+    ];
+    
+    // Zu Liste hinzufügen
+    $matches = loadMatches();
+    $matches[] = $match;
+    saveMatches($matches);
+    
+    // E-Mail an Admin senden
+    $admin_email = 'jurak.bahrambaek@noba-experts.de';
+    
+    if ($type === 'candidate_to_vacancy') {
+        $subject = "🎯 Neues Interesse: Kandidat → Stelle";
+        $body = "Ein Kandidat hat Interesse an einer Stelle gezeigt!\n\n";
+        $body .= "Kandidat: $user_name ($user_email)\n";
+        $body .= "Stelle: $target_title\n";
+        $body .= "Zeit: " . date('d.m.Y H:i') . "\n";
+        if ($message) $body .= "Nachricht: $message\n";
+        $body .= "\nZum Dashboard: https://chatbot.noba-experts.de/admin/";
+    } else {
+        $subject = "🎯 Neues Interesse: Kunde → Kandidat";
+        $body = "Ein Kunde hat Interesse an einem Kandidaten gezeigt!\n\n";
+        $body .= "Kunde: $user_name ($user_email)\n";
+        $body .= "Kandidat: $target_title\n";
+        $body .= "Zeit: " . date('d.m.Y H:i') . "\n";
+        if ($message) $body .= "Nachricht: $message\n";
+        $body .= "\nZum Dashboard: https://chatbot.noba-experts.de/admin/";
+    }
+    
+    // E-Mail senden (async)
+    @mail($admin_email, $subject, $body, "From: noreply@noba-experts.de\r\n");
+    
+    error_log("✅ Neuer Match gespeichert: $type - {$match['id']}");
+    
+    echo json_encode([
+        'success' => true,
+        'match_id' => $match['id'],
+        'message' => 'Interesse gespeichert! Wir melden uns zeitnah.'
+    ]);
+}
+
+/**
+ * Alle Matches abrufen (für Admin Dashboard)
+ */
+function handleGetMatches() {
+    $matches = loadMatches();
+    
+    // Filter-Parameter
+    $type = $_GET['type'] ?? 'all'; // all, candidate_to_vacancy, customer_to_candidate
+    $status = $_GET['status'] ?? 'all'; // all, new, contacted, rejected, hired
+    
+    // Filtern
+    $filtered = array_filter($matches, function($match) use ($type, $status) {
+        if ($type !== 'all' && ($match['type'] ?? '') !== $type) {
+            return false;
+        }
+        if ($status !== 'all' && ($match['status'] ?? 'new') !== $status) {
+            return false;
+        }
+        return true;
+    });
+    
+    // Sortieren (neueste zuerst)
+    usort($filtered, fn($a, $b) => strtotime($b['created_at']) <=> strtotime($a['created_at']));
+    
+    echo json_encode([
+        'success' => true,
+        'data' => array_values($filtered),
+        'total' => count($filtered)
+    ]);
+}
+
+/**
+ * Match löschen
+ */
+function handleDeleteMatch() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? $_GET['id'] ?? '';
+    
+    if (!$id) {
+        http_response_code(400);
+        die(json_encode(['error' => 'Missing match ID']));
+    }
+    
+    $matches = loadMatches();
+    $filtered = array_filter($matches, fn($m) => $m['id'] !== $id);
+    
+    if (count($filtered) === count($matches)) {
+        http_response_code(404);
+        die(json_encode(['error' => 'Match not found']));
+    }
+    
+    saveMatches(array_values($filtered));
+    
+    error_log("🗑️ Match gelöscht: ID {$id}");
+    
+    echo json_encode([
+        'success' => true,
+        'message' => 'Match erfolgreich gelöscht'
+    ]);
+}
+
+// ========================================
+// PROJEKT-ANALYSE HANDLERS
+// ========================================
+
+/**
+ * KI-basierte Projektanalyse
+ * Analysiert Lastenheft/Projektbeschreibung und extrahiert:
+ * - Benötigte Rollen
+ * - Skills pro Rolle
+ * - Zeitaufwand & Kosten
+ * - Passende Kandidaten aus DB
+ */
+function analyzeProjectWithAI($text, $project_name = '') {
+    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A';
+    $model = 'gemini-2.0-flash-exp';
+    
+    $prompt = "Du bist ein Experte für IT-Projektmanagement und Ressourcenplanung. Analysiere folgendes Projekt/Lastenheft und erstelle eine detaillierte Personalbedarfsanalyse.
+
+PROJEKT-BESCHREIBUNG:
+$text
+
+AUFGABE:
+1. PROJEKT-ÜBERBLICK:
+   - Projektziel & Beschreibung (kurz zusammengefasst)
+   - Projektdauer (geschätzt in Monaten)
+   - Technologie-Stack
+   - Komplexität (niedrig/mittel/hoch/sehr hoch)
+
+2. BENÖTIGTE ROLLEN/POSITIONEN:
+   Für jede benötigte Rolle extrahiere:
+   - Rollenbezeichnung (z.B. \"Senior Backend Developer\", \"DevOps Engineer\")
+   - Anzahl benötigter Personen
+   - Erforderliche Skills (als Array)
+   - Seniority-Level (Junior/Mid/Senior/Lead)
+   - Zeitaufwand in Personentagen (PT) oder Personenmonaten (PM)
+   - Geschätzte Kosten pro Rolle (basierend auf üblichen Marktpreisen in EUR)
+
+3. GESAMTKALKULATION:
+   - Gesamte Personentage/Personenmonate
+   - Gesamtkosten (Range: Min-Max in EUR)
+   - Kritische Skills (die schwer zu finden sind)
+
+ANTWORT-FORMAT (nur JSON):
+```json
+{
+  \"project_summary\": {
+    \"name\": \"$project_name\",
+    \"description\": \"Kurze Zusammenfassung des Projekts\",
+    \"duration_months\": 6,
+    \"tech_stack\": [\"React\", \"Node.js\", \"AWS\", ...],
+    \"complexity\": \"hoch\"
+  },
+  \"required_roles\": [
+    {
+      \"role\": \"Senior Backend Developer\",
+      \"count\": 2,
+      \"skills\": [\"Node.js\", \"PostgreSQL\", \"Docker\", ...],
+      \"seniority_level\": \"Senior\",
+      \"effort_days\": 120,
+      \"estimated_cost_eur\": 72000,
+      \"description\": \"Kurze Beschreibung der Aufgaben\"
+    },
+    ...
+  ],
+  \"total_cost\": {
+    \"min_eur\": 200000,
+    \"max_eur\": 300000,
+    \"total_person_months\": 15
+  },
+  \"critical_skills\": [\"Kubernetes\", \"Machine Learning\", ...],
+  \"recommendations\": \"Weitere Empfehlungen für das Projekt\"
+}
+```
+
+WICHTIG: Antworte NUR mit dem JSON-Objekt! Keine Markdown-Formatierung.";
+
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$api_key";
+    
+    $data = [
+        'contents' => [
+            [
+                'parts' => [
+                    ['text' => $prompt]
+                ]
+            ]
+        ],
+        'generationConfig' => [
+            'temperature' => 0.3,
+            'maxOutputTokens' => 4000,
+        ],
+    ];
+    
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($http_code !== 200) {
+        error_log("Gemini API Error (Project): HTTP $http_code - $response");
+        return null;
+    }
+    
+    $result = json_decode($response, true);
+    $ai_text = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
+    
+    // JSON extrahieren
+    $ai_text = trim($ai_text);
+    $ai_text = preg_replace('/^```json\s*/s', '', $ai_text);
+    $ai_text = preg_replace('/\s*```$/s', '', $ai_text);
+    
+    $extracted = json_decode($ai_text, true);
+    
+    if (!$extracted) {
+        error_log("Failed to parse AI response (Project): $ai_text");
+        return null;
+    }
+    
+    return $extracted;
+}
+
+/**
+ * Finde passende Kandidaten für Projekt-Rollen
+ */
+function findCandidatesForProject($required_roles) {
+    $candidates = loadCandidates();
+    $matched_candidates = [];
+    
+    foreach ($required_roles as $role) {
+        $role_skills = array_map('strtolower', $role['skills'] ?? []);
+        $role_matches = [];
+        
+        foreach ($candidates as $candidate) {
+            if (($candidate['status'] ?? 'available') !== 'available') {
+                continue;
+            }
+            
+            $candidate_skills = array_map('strtolower', $candidate['skills'] ?? []);
+            $score = 0;
+            
+            // Skill-Matching
+            foreach ($role_skills as $req_skill) {
+                foreach ($candidate_skills as $cand_skill) {
+                    if (stripos($cand_skill, $req_skill) !== false || stripos($req_skill, $cand_skill) !== false) {
+                        $score += 10;
+                    }
+                }
+            }
+            
+            // Seniority-Matching
+            $role_seniority = strtolower($role['seniority_level'] ?? '');
+            $cand_seniority = strtolower($candidate['seniority_level'] ?? '');
+            if ($role_seniority === $cand_seniority) {
+                $score += 15;
+            }
+            
+            if ($score > 0) {
+                $role_matches[] = [
+                    'candidate' => $candidate,
+                    'score' => $score,
+                    'matching_skills' => array_intersect($role_skills, $candidate_skills)
+                ];
+            }
+        }
+        
+        // Sortiere nach Score
+        usort($role_matches, fn($a, $b) => $b['score'] <=> $a['score']);
+        
+        $matched_candidates[$role['role']] = array_slice($role_matches, 0, 5);
+    }
+    
+    return $matched_candidates;
+}
+
+function handleUploadProject() {
+    $rawText = $_POST['raw_text'] ?? '';
+    $projectName = $_POST['project_name'] ?? '';
+    $file = $_FILES['file'] ?? null;
+    
+    $extractedText = '';
+    
+    if ($file && $file['error'] === UPLOAD_ERR_OK) {
+        $filename = $file['name'];
+        $tmpPath = $file['tmp_name'];
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        
+        if ($extension === 'pdf') {
+            $extractedText = extractTextFromPDF($tmpPath);
+        } elseif ($extension === 'docx') {
+            $extractedText = extractTextFromDOCX($tmpPath);
+        } elseif (in_array($extension, ['txt', 'doc'])) {
+            $extractedText = file_get_contents($tmpPath);
+        } else {
+            http_response_code(400);
+            die(json_encode(['error' => 'Unsupported file type. Please upload PDF, DOCX, or TXT.']));
+        }
+        
+        $originalFilename = $filename;
+    } elseif ($rawText) {
+        $extractedText = $rawText;
+        $originalFilename = 'Manual Input';
+    } else {
+        http_response_code(400);
+        die(json_encode(['error' => 'No file or text provided']));
+    }
+    
+    // KI-Analyse
+    $analysisData = analyzeProjectWithAI($extractedText, $projectName);
+    
+    if (!$analysisData) {
+        http_response_code(500);
+        die(json_encode(['error' => 'AI analysis failed']));
+    }
+    
+    // Finde passende Kandidaten für jede Rolle
+    $matched_candidates = findCandidatesForProject($analysisData['required_roles'] ?? []);
+    
+    // Projekt-Objekt erstellen
+    $project = [
+        'id' => uniqid('proj_', true),
+        'name' => $projectName ?: ($analysisData['project_summary']['name'] ?? 'Unbenanntes Projekt'),
+        'summary' => $analysisData['project_summary'] ?? [],
+        'required_roles' => $analysisData['required_roles'] ?? [],
+        'total_cost' => $analysisData['total_cost'] ?? [],
+        'critical_skills' => $analysisData['critical_skills'] ?? [],
+        'recommendations' => $analysisData['recommendations'] ?? '',
+        'matched_candidates' => $matched_candidates,
+        'created_at' => date('c'),
+        'updated_at' => date('c'),
+        'original_filename' => $originalFilename ?? 'Manual Input',
+        'status' => 'open', // open, in_progress, completed, cancelled
+        'original_text' => $extractedText
+    ];
+    
+    $projects = loadProjects();
+    $projects[] = $project;
+    saveProjects($projects);
+    
+    error_log("✅ Neues Projekt analysiert: {$project['name']} (ID: {$project['id']})");
+    
+    echo json_encode([
+        'success' => true,
+        'project' => $project,
+        'message' => 'Projekt erfolgreich analysiert'
+    ]);
+}
+
+function handleGetProjects() {
+    $projects = loadProjects();
+    
+    $status = $_GET['status'] ?? 'all';
+    $search = $_GET['search'] ?? '';
+    
+    $filtered = array_filter($projects, function($proj) use ($status, $search) {
+        if ($status !== 'all' && ($proj['status'] ?? 'open') !== $status) {
+            return false;
+        }
+        
+        if ($search) {
+            $searchable = json_encode($proj, JSON_UNESCAPED_UNICODE);
+            if (stripos($searchable, $search) === false) {
+                return false;
+            }
+        }
+        
+        return true;
+    });
+    
+    usort($filtered, fn($a, $b) => strtotime($b['created_at']) <=> strtotime($a['created_at']));
+    
+    echo json_encode([
+        'success' => true,
+        'data' => array_values($filtered),
+        'total' => count($filtered)
+    ]);
+}
+
+function handleUpdateProject() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? '';
+    $updates = $input['updates'] ?? [];
+    
+    if (!$id) {
+        http_response_code(400);
+        die(json_encode(['error' => 'Missing project ID']));
+    }
+    
+    $projects = loadProjects();
+    $found = false;
+    
+    foreach ($projects as &$proj) {
+        if ($proj['id'] === $id) {
+            foreach ($updates as $key => $value) {
+                $proj[$key] = $value;
+            }
+            $proj['updated_at'] = date('c');
+            $found = true;
+            break;
+        }
+    }
+    
+    if (!$found) {
+        http_response_code(404);
+        die(json_encode(['error' => 'Project not found']));
+    }
+    
+    saveProjects($projects);
+    
+    error_log("✏️ Projekt aktualisiert: ID {$id}");
+    
+    echo json_encode([
+        'success' => true,
+        'message' => 'Projekt erfolgreich aktualisiert'
+    ]);
+}
+
+function handleDeleteProject() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? $_GET['id'] ?? '';
+    
+    if (!$id) {
+        http_response_code(400);
+        die(json_encode(['error' => 'Missing project ID']));
+    }
+    
+    $projects = loadProjects();
+    $filtered = array_filter($projects, fn($proj) => $proj['id'] !== $id);
+    
+    if (count($filtered) === count($projects)) {
+        http_response_code(404);
+        die(json_encode(['error' => 'Project not found']));
+    }
+    
+    saveProjects(array_values($filtered));
+    
+    error_log("🗑️ Projekt gelöscht: ID {$id}");
+    
+    echo json_encode([
+        'success' => true,
+        'message' => 'Projekt erfolgreich gelöscht'
+    ]);
+}
+
+function handleAnalyzeProject() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? '';
+    
+    if (!$id) {
+        http_response_code(400);
+        die(json_encode(['error' => 'Missing project ID']));
+    }
+    
+    $projects = loadProjects();
+    $project = null;
+    
+    foreach ($projects as &$proj) {
+        if ($proj['id'] === $id) {
+            // Re-analyse mit aktuellem Kandidaten-Pool
+            $matched_candidates = findCandidatesForProject($proj['required_roles'] ?? []);
+            $proj['matched_candidates'] = $matched_candidates;
+            $proj['updated_at'] = date('c');
+            $project = $proj;
+            break;
+        }
+    }
+    
+    if (!$project) {
+        http_response_code(404);
+        die(json_encode(['error' => 'Project not found']));
+    }
+    
+    saveProjects($projects);
+    
+    echo json_encode([
+        'success' => true,
+        'project' => $project,
+        'message' => 'Projekt neu analysiert'
+    ]);
+}
+
 ?>

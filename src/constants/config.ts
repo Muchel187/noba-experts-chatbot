@@ -10,10 +10,10 @@ export const APP_CONFIG = {
   },
   endpoints: {
     backendBaseUrl: 'https://chatbot.noba-experts.de',
-    chat: '/chatbot-api.php',
-    upload: '/upload-document.php',
-    emailSummary: '/send-summary.php',
-    logger: '/chatbot-logger.php',
+    chat: '/backend/chatbot-api.php',
+    upload: '/backend/upload-document.php',
+    emailSummary: '/backend/send-summary.php',
+    logger: '/backend/chatbot-logger.php',
   },
   limits: {
     maxMessageLength: 500,

@@ -65,11 +65,13 @@ $CONFIG = [
     'GOOGLE_AI_API_KEY' => 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A', // ← Google Gemini API Key
 
     // Google Gemini Modell (laut Google Cloud Dokumentation)
+    // WICHTIG: Rate Limits beachten!
     // Verfügbare Modelle: 
-    // - 'gemini-2.5-flash' (NEUESTES - GA seit Juni 2025, beste Preis/Leistung)
-    // - 'gemini-1.5-pro' (Leistungsstärkstes, komplexe Aufgaben)
-    // - 'gemini-1.5-flash' (Bewährt & schnell)
-    'GEMINI_MODEL' => 'gemini-2.5-flash-lite', // ← Höhere Quota (4000/Tag)
+    // - 'gemini-2.0-flash-thinking-exp' (Experimental - UNLIMITED RPM & TPM!) ← BESTE WAHL
+    // - 'gemini-2.0-flash-exp' (Experimental - 2000 RPM, nicht genug)
+    // - 'gemini-2.5-flash-lite' (Lite - NUR 15 RPM, viel zu wenig)
+    // - 'gemini-1.5-pro' (Pro - teurer, 360 RPM)
+    'GEMINI_MODEL' => 'gemini-2.0-flash-thinking-exp', // ← UNLIMITED!
     
     // Rate Limiting
     'MAX_REQUESTS_PER_MINUTE' => 30,
@@ -222,6 +224,30 @@ function fetchCandidateProfiles() {
     return array_values($availableCandidates);
 }
 
+// ===== PROJEKTE AUS JSON LADEN =====
+function fetchProjects() {
+    $file = __DIR__ . '/../projects.json';
+    
+    if (!file_exists($file)) {
+        error_log('⚠️ Keine Projekte-Datei gefunden');
+        return [];
+    }
+    
+    $data = json_decode(file_get_contents($file), true);
+    
+    if (!$data) {
+        error_log('⚠️ Projekte-Datei konnte nicht gelesen werden');
+        return [];
+    }
+    
+    // Nur offene Projekte zurückgeben
+    $openProjects = array_filter($data, fn($p) => ($p['status'] ?? 'open') === 'open');
+    
+    error_log('✅ Projekte geladen: ' . count($openProjects) . ' offene Projekte');
+    
+    return array_values($openProjects);
+}
+
 // ===== MATCHING: Finde passende Vakanzen für Kandidaten =====
 function findMatchingVacancies($userMessage, $vacancies) {
     if (empty($vacancies)) {
@@ -238,7 +264,9 @@ function findMatchingVacancies($userMessage, $vacancies) {
         'sql', 'mysql', 'postgresql', 'mongodb', 'redis',
         'embedded', 'c++', 'c#', 'rust', 'golang', 'typescript',
         'machine learning', 'ai', 'data science', 'big data',
-        'scrum', 'agile', 'kanban', 'project management'
+        'scrum', 'agile', 'kanban', 'project management',
+        'it', 'security', 'netzwerk', 'server', 'administration',
+        'einkauf', 'vertrieb', 'mechaniker', 'elektroniker', 'sachbearbeiter'
     ];
 
     $userSkills = [];
@@ -248,11 +276,28 @@ function findMatchingVacancies($userMessage, $vacancies) {
         }
     }
 
+    // Extrahiere Standorte aus User-Nachricht
+    $locations = ['neuss', 'düsseldorf', 'koeln', 'köln', 'aachen', 'ratingen', 'berlin', 'münchen', 'hamburg', 'remote', 'mönchengladbach', 'hilchenbach'];
+    $userLocations = [];
+    foreach ($locations as $loc) {
+        if (stripos($lower, $loc) !== false) {
+            $userLocations[] = $loc;
+        }
+    }
+
     // Score jede Vakanz
     foreach ($vacancies as $vacancy) {
         $score = 0;
         $requiredSkills = array_map('strtolower', $vacancy['required_skills'] ?? []);
         $niceToHaveSkills = array_map('strtolower', $vacancy['nice_to_have_skills'] ?? []);
+        $vacancyLocation = strtolower($vacancy['location'] ?? '');
+
+        // Location-Matching (HÖCHSTE PRIORITÄT)
+        foreach ($userLocations as $userLoc) {
+            if (stripos($vacancyLocation, $userLoc) !== false) {
+                $score += 100; // Standort-Match = sehr hohe Priorität!
+            }
+        }
 
         // Skill-Matching
         foreach ($userSkills as $userSkill) {
@@ -271,10 +316,25 @@ function findMatchingVacancies($userMessage, $vacancies) {
             }
         }
 
-        if ($score > 0) {
+        // Wenn User nach Standort fragt, zeige NUR Vakanzen mit Standort-Match
+        if (!empty($userLocations) && $score >= 100) {
             $matches[] = [
                 'vacancy' => $vacancy,
                 'score' => $score
+            ];
+        }
+        // Ansonsten alle mit Score > 0
+        elseif (empty($userLocations) && $score > 0) {
+            $matches[] = [
+                'vacancy' => $vacancy,
+                'score' => $score
+            ];
+        }
+        // Fallback: Wenn keine Skills/Locations, alle Vakanzen zeigen
+        elseif (empty($userSkills) && empty($userLocations)) {
+            $matches[] = [
+                'vacancy' => $vacancy,
+                'score' => 1 // Minimal score für Sortierung nach Datum
             ];
         }
     }
@@ -282,8 +342,8 @@ function findMatchingVacancies($userMessage, $vacancies) {
     // Sortiere nach Score (höchste zuerst)
     usort($matches, fn($a, $b) => $b['score'] <=> $a['score']);
 
-    // Gib Top 5 zurück
-    return array_slice(array_column($matches, 'vacancy'), 0, 5);
+    // Gib Top 8 zurück (mehr Vakanzen zeigen)
+    return array_slice(array_column($matches, 'vacancy'), 0, 8);
 }
 
 // ===== MATCHING: Finde passende Kandidaten für Unternehmen =====
@@ -760,6 +820,8 @@ function generateQuickReplies($bot_response, $user_message, $history = []) {
         strpos($bot_response_lower, 'hallo') !== false ||
         strpos($bot_response_lower, 'guten tag') !== false) {
         return [
+            '💼 Aktuelle Jobs & Projekte',
+            '👥 Aktuelle Experten',
             '👔 Job suchen',
             '🔍 Mitarbeiter finden',
             '💡 Unsere Services'
@@ -945,6 +1007,124 @@ function generateQuickReplies($bot_response, $user_message, $history = []) {
 }
 
 // ===== GOOGLE GEMINI AI AUFRUF =====
+// ===== INTERESSE-ERKENNUNG & MATCHING =====
+
+/**
+ * Erkenne Interesse an Kandidat oder Stelle und speichere Match
+ */
+function detectAndSaveInterest($session_id, $user_message, $ai_response, $user_type, $conversation_history) {
+    $user_msg_lower = strtolower($user_message);
+    
+    // Keywords für Interesse
+    $interest_keywords = [
+        'interessiert mich', 'interesse', 'mehr erfahren', 'kontakt', 'bewerben',
+        'mehr infos', 'mehr informationen', 'details', 'kandidat #', 'stelle #',
+        'vakanz #', 'profil #', 'diesen kandidaten', 'diese stelle', 'diesen job'
+    ];
+    
+    $shows_interest = false;
+    foreach ($interest_keywords as $kw) {
+        if (stripos($user_msg_lower, $kw) !== false) {
+            $shows_interest = true;
+            break;
+        }
+    }
+    
+    if (!$shows_interest) return;
+    
+    // Hole User-Info aus Session/Conversation
+    $user_email = '';
+    $user_name = 'Unbekannt';
+    
+    foreach ($conversation_history as $msg) {
+        $text = strtolower($msg['text'] ?? '');
+        // Suche nach E-Mail in vorherigen Nachrichten
+        if (preg_match('/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/', $text, $matches)) {
+            $user_email = $matches[0];
+        }
+        // Suche nach Namen
+        if (stripos($text, 'mein name ist') !== false || stripos($text, 'ich bin') !== false) {
+            $parts = explode(' ', $text);
+            if (count($parts) > 3) {
+                $user_name = ucfirst($parts[3]) . ' ' . ucfirst($parts[4] ?? '');
+            }
+        }
+    }
+    
+    // Bestimme Target (Kandidat oder Stelle)
+    $target_id = null;
+    $target_title = '';
+    $match_type = '';
+    
+    // Versuche Kandidat # oder Stelle # zu finden
+    if (preg_match('/kandidat\s*#?(\d+)/i', $user_msg_lower, $matches)) {
+        // Interesse an Kandidat (Kunde)
+        $candidate_nr = (int)$matches[1];
+        $candidates = fetchCandidateProfiles();
+        if (isset($candidates[$candidate_nr - 1])) {
+            $candidate = $candidates[$candidate_nr - 1];
+            $target_id = $candidate['id'];
+            $target_title = $candidate['seniority_level'] . ' (' . $candidate['experience_years'] . ' Jahre)';
+            $match_type = 'customer_to_candidate';
+        }
+    } elseif (preg_match('/stelle\s*#?(\d+)|vakanz\s*#?(\d+)|job\s*#?(\d+)|position\s*#?(\d+)/i', $user_msg_lower, $matches)) {
+        // Interesse an Stelle (Kandidat)
+        $vacancy_nr = (int)($matches[1] ?? $matches[2] ?? $matches[3] ?? $matches[4]);
+        $vacancies = fetchCurrentVacancies();
+        if (isset($vacancies[$vacancy_nr - 1])) {
+            $vacancy = $vacancies[$vacancy_nr - 1];
+            $target_id = $vacancy['id'];
+            $target_title = $vacancy['title'];
+            $match_type = 'candidate_to_vacancy';
+        }
+    } else {
+        // Allgemeines Interesse ohne spezifische Nummer
+        // Versuche aus Context zu erkennen welcher Kandidat/Stelle gemeint ist
+        if ($user_type === 'employer') {
+            $match_type = 'customer_to_candidate';
+            $target_title = 'Allgemeines Interesse (siehe Chat-Verlauf)';
+        } else {
+            $match_type = 'candidate_to_vacancy';
+            $target_title = 'Allgemeines Interesse (siehe Chat-Verlauf)';
+        }
+    }
+    
+    if (!$match_type) return;
+    
+    // Speichere Interest via API
+    $data = [
+        'type' => $match_type,
+        'user_email' => $user_email,
+        'user_name' => $user_name,
+        'session_id' => $session_id,
+        'target_id' => $target_id ?? 'general',
+        'target_title' => $target_title,
+        'message' => $user_message
+    ];
+    
+    $api_url = 'https://chatbot.noba-experts.de/backend/admin-api.php?action=save_interest';
+    
+    // Async POST Request
+    $ch = curl_init($api_url);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($http_code === 200) {
+        error_log("✅ Interesse gespeichert: $match_type - $target_title (Session: $session_id)");
+    } else {
+        error_log("⚠️ Fehler beim Speichern von Interesse: HTTP $http_code");
+    }
+}
+
+// ===== GEMINI AI CALL =====
+
 function callGeminiAI($message, $history, $api_key, $model) {
     // Prüfe ob API Key gesetzt wurde
     if ($api_key === 'IHR_KEY_HIER' || empty($api_key)) {
@@ -980,6 +1160,19 @@ Als Mina bist du **IN ERSTER LINIE RECRUITERIN**:
 - Wenn Unternehmen nach Kandidaten fragen, zeige passende Profile
 - Alle Profile sind DSGVO-konform anonymisiert (keine Namen, Adressen, persönlichen Daten)
 - Erkläre immer, dass vollständige Unterlagen nach NDA verfügbar sind
+
+**PROJEKT-ANALYSE & TEAM-PLANUNG (NEU!):**
+- Du kannst Projekte/Lastenheft analysieren und Ressourcenpläne erstellen
+- Wenn Kunden nach Projekt, Team, Gewerk oder Ressourcen fragen:
+  - Erkläre die Projekt-Analyse-Funktion enthusiastisch
+  - Zeige verfügbare Projekt-Analysen (falls vorhanden)
+  - Biete an, ein neues Projekt zu analysieren
+- Projekt-Analyse beinhaltet:
+  - Benötigte Rollen & Skills
+  - Kostenabschätzung (realistische Marktpreise)
+  - Zeitaufwand (Personentage/-monate)
+  - Passende Kandidaten aus unserem Pool
+- Fordere User auf, Projektbeschreibung zu teilen (Admin lädt dann hoch)
 
 ## TON & STIL
 - Höflich und respektvoll (immer \"Sie\")
@@ -1268,12 +1461,75 @@ try {
     // SPEZIALBEHANDLUNG: Aktuelle Stellenangebote & Matching
     $vacancies = fetchCurrentVacancies();
     $candidates = fetchCandidateProfiles();
+    $projects = fetchProjects();
 
+    // KUNDE FRAGT NACH PROJEKT-ANALYSE / TEAM-AUFBAU
+    if (stripos($user_message, 'projekt') !== false ||
+        stripos($user_message, 'team') !== false ||
+        stripos($user_message, 'gewerk') !== false ||
+        stripos($user_message, 'lastenheft') !== false ||
+        stripos($user_message, 'ressourcen') !== false ||
+        stripos($user_message, 'personalbedarf') !== false) {
+        
+        if (!empty($projects)) {
+            $projects_text = "VERFÜGBARE PROJEKT-ANALYSEN:\n\n";
+            
+            foreach (array_slice($projects, 0, 3) as $idx => $project) {
+                $projects_text .= "🏗️ PROJEKT: " . ($project['name'] ?? 'Unbenannt') . "\n";
+                
+                if (!empty($project['summary']['description'])) {
+                    $projects_text .= "   📝 " . mb_substr($project['summary']['description'], 0, 100) . "...\n";
+                }
+                
+                if (!empty($project['summary']['duration_months'])) {
+                    $projects_text .= "   ⏱️ Dauer: " . $project['summary']['duration_months'] . " Monate\n";
+                }
+                
+                if (!empty($project['total_cost'])) {
+                    $min = number_format($project['total_cost']['min_eur'], 0, ',', '.');
+                    $max = number_format($project['total_cost']['max_eur'], 0, ',', '.');
+                    $projects_text .= "   💰 Kosten: {$min} - {$max} EUR\n";
+                }
+                
+                if (!empty($project['required_roles'])) {
+                    $roles_count = count($project['required_roles']);
+                    $projects_text .= "   👥 Benötigte Rollen: {$roles_count}\n";
+                    
+                    // Zeige erste 3 Rollen
+                    foreach (array_slice($project['required_roles'], 0, 3) as $role) {
+                        $projects_text .= "      • " . $role['role'] . " (" . $role['count'] . "x)\n";
+                    }
+                }
+                
+                $projects_text .= "\n";
+            }
+            
+            $projects_text .= "💡 TIP: Ich kann Ihr Lastenheft analysieren und einen detaillierten Ressourcenplan mit passenden Kandidaten erstellen!";
+            
+            $enriched_message = "[CONTEXT-INFO: Der User fragt nach Projekt-Analyse oder Team-Aufbau. Präsentiere folgende Projekt-Analysen:\n\n" . $projects_text . "\n\nERWARTET: Erkläre die Projekt-Analyse-Funktion, zeige verfügbare Projekte, und biete an, ein neues Projekt zu analysieren.]\n\nUser-Frage: " . $user_message;
+            error_log('✨ Projekt-Analysen injiziert: ' . count($projects) . ' Projekte');
+        } else {
+            // Keine Projekte vorhanden - erkläre die Funktion
+            $intro_text = "🏗️ PROJEKT-ANALYSE & TEAM-PLANUNG\n\n";
+            $intro_text .= "Ich kann Ihr Lastenheft oder Ihre Projektbeschreibung analysieren und erstelle:\n\n";
+            $intro_text .= "✅ Detaillierte Ressourcenplanung (welche Rollen benötigt werden)\n";
+            $intro_text .= "✅ Kostenabschätzung (realistische Budgetplanung)\n";
+            $intro_text .= "✅ Passende Kandidaten aus unserem Pool\n";
+            $intro_text .= "✅ Zeitaufwand pro Rolle (Personentage/Monate)\n\n";
+            $intro_text .= "💡 Senden Sie mir einfach Ihre Projektbeschreibung, und ich erstelle eine umfassende Analyse!";
+            
+            $enriched_message = "[CONTEXT-INFO: Der User fragt nach Projekt-Analyse. Erkläre die Funktion:\n\n" . $intro_text . "\n\nERWARTET: Erkläre enthusiastisch die Projekt-Analyse-Funktion und fordere den User auf, eine Projektbeschreibung zu teilen.]\n\nUser-Frage: " . $user_message;
+            error_log('✨ Projekt-Analyse-Intro injiziert (keine Projekte vorhanden)');
+        }
+    }
     // KANDIDAT FRAGT NACH JOBS
     if (stripos($user_message, 'Aktuelle Stellenangebote') !== false ||
         stripos($user_message, 'Aktuelle Stellen') !== false ||
         stripos($user_message, '💼 Aktuelle Stellenangebote') !== false ||
         stripos($user_message, '💼 Aktuelle Stellen') !== false ||
+        stripos($user_message, '💼 Aktuelle Jobs & Projekte') !== false ||
+        stripos($user_message, 'Aktuelle Jobs') !== false ||
+        stripos($user_message, 'offene Jobs') !== false ||
         stripos($user_message, 'job') !== false ||
         stripos($user_message, 'stelle') !== false) {
 
@@ -1310,6 +1566,9 @@ try {
     // KUNDE FRAGT NACH KANDIDATEN
     elseif (stripos($user_message, 'kandidat') !== false ||
             stripos($user_message, 'bewerber') !== false ||
+            stripos($user_message, '👥 Aktuelle Experten') !== false ||
+            stripos($user_message, 'Aktuelle Experten') !== false ||
+            stripos($user_message, 'verfügbare Experten') !== false ||
             stripos($user_message, 'mitarbeiter') !== false && (stripos($user_message, 'such') !== false || stripos($user_message, 'brauche') !== false)) {
 
         // Versuche Matching basierend auf User-Message
@@ -1368,6 +1627,75 @@ try {
             $enriched_message = "[CONTEXT-INFO für deine Antwort:\n" . $context_info . "\n]\n\nUser-Frage: " . $user_message;
             error_log('✨ Context injiziert: ' . $context_type);
         }
+    }
+
+    // INTELLIGENTE CONTEXT-BEREITSTELLUNG basierend auf User-Intent
+    // Nur relevante Daten zeigen - NIEMALS beide gleichzeitig!
+    $contextSummary = "";
+    
+    // Erkenne User-Typ aus der Konversation
+    $conversation_text = implode(' ', array_map(function($msg) {
+        return strtolower($msg['text'] ?? '');
+    }, $conversation_history));
+    $user_message_lower = strtolower($user_message);
+    
+    // Keywords für Kandidaten (suchen Jobs)
+    $candidate_keywords = ['job suchen', 'stelle suchen', 'position suchen', 'karriere', 'bewerbung', 
+                          'ich suche', 'neue stelle', 'mein profil', 'meine erfahrung', 'ich bin', 
+                          'ich habe erfahrung', 'lebenslauf'];
+    
+    // Keywords für Kunden (suchen Kandidaten)
+    $employer_keywords = ['kandidat', 'bewerber', 'mitarbeiter suchen', 'team erweitern', 
+                         'experten', 'fachkraft', 'wir suchen', 'wir brauchen', 
+                         'verfügbare kandidaten', 'profile', 'besetzung'];
+    
+    $is_candidate = false;
+    $is_employer = false;
+    
+    foreach ($candidate_keywords as $kw) {
+        if (stripos($user_message_lower, $kw) !== false || stripos($conversation_text, $kw) !== false) {
+            $is_candidate = true;
+            break;
+        }
+    }
+    
+    foreach ($employer_keywords as $kw) {
+        if (stripos($user_message_lower, $kw) !== false || stripos($conversation_text, $kw) !== false) {
+            $is_employer = true;
+            break;
+        }
+    }
+    
+    // SICHERHEIT: Zeige NUR die relevanten Daten!
+    if ($is_candidate && !$is_employer && !empty($vacancies)) {
+        // User ist KANDIDAT → Zeige NUR Vakanzen
+        $contextSummary = "\n\n[VERFÜGBARE VAKANZEN:\n";
+        foreach (array_slice($vacancies, 0, 5) as $idx => $vac) {
+            $contextSummary .= ($idx + 1) . ". " . $vac['title'] . " | " . $vac['location'] . " | " . $vac['experience_level'];
+            if (!empty($vac['required_skills'])) {
+                $contextSummary .= " | Skills: " . implode(', ', array_slice($vac['required_skills'], 0, 3));
+            }
+            $contextSummary .= "\n";
+        }
+        $contextSummary .= "⚠️ NIEMALS Kandidatenprofile zeigen - User ist selbst Kandidat!]\n\n";
+    } 
+    elseif ($is_employer && !$is_candidate && !empty($candidates)) {
+        // User ist KUNDE → Zeige NUR Kandidaten
+        $contextSummary = "\n\n[VERFÜGBARE KANDIDATEN:\n";
+        foreach (array_slice($candidates, 0, 3) as $idx => $cand) {
+            $contextSummary .= ($idx + 1) . ". " . $cand['seniority_level'] . " | " . $cand['experience_years'] . " Jahre";
+            if (!empty($cand['skills'])) {
+                $contextSummary .= " | Skills: " . implode(', ', array_slice($cand['skills'], 0, 4));
+            }
+            $contextSummary .= " | " . $cand['location'] . "\n";
+        }
+        $contextSummary .= "⚠️ NIEMALS Vakanzen zeigen - User sucht Mitarbeiter, nicht Jobs!]\n\n";
+    }
+    // Wenn unklar: KEINE Daten zeigen (Sicherheit first!)
+    
+    // Füge Kontext zum enriched_message hinzu (nur wenn vorhanden)
+    if (!empty($contextSummary)) {
+        $enriched_message = $contextSummary . $enriched_message;
     }
 
     // Versuche KI-Antwort zu bekommen (mit Gemini Flash Modell)
