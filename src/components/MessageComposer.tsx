@@ -74,7 +74,7 @@ export const MessageComposer = ({
       onSubmit={handleSubmit}
       className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4"
     >
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-6xl">
         <div className="glass-strong rounded-2xl border border-neon-purple/20 p-3 shadow-glass-lg backdrop-blur-2xl transition-all hover:border-neon-purple/40 hover:shadow-neon-purple sm:p-4">
           <div className="flex items-end gap-3">
             {/* Upload Button */}

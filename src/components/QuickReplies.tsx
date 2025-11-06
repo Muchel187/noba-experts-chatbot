@@ -69,7 +69,7 @@ export const QuickReplies = ({ options, onSelect }: QuickRepliesProps) => {
         exit="exit"
         className="fixed bottom-24 left-0 right-0 z-[60] px-4 animate-fade-in"
       >
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-6xl">
           <div className="flex flex-wrap justify-center gap-2">
             {options.map((option, index) => {
               const Icon = getIconForOption(option);
