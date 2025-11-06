@@ -195,6 +195,22 @@ switch ($action) {
         handleDeleteMatch();
         break;
 
+    case 'ai_assistant_chat':
+        handleAIAssistantChat();
+        break;
+
+    case 'ai_assistant_suggestions':
+        handleAIAssistantSuggestions();
+        break;
+
+    case 'ai_assistant_analytics':
+        handleAIAssistantAnalytics();
+        break;
+
+    case 'ai_assistant_context':
+        handleAIAssistantContext();
+        break;
+
     default:
         http_response_code(404);
         echo json_encode(['error' => 'Unknown action: ' . $action]);
@@ -3614,6 +3630,106 @@ Antworte immer auf Deutsch, sei professionell aber freundlich.';
         'success' => true,
         'message' => $ai_text,
     ]);
+}
+
+
+
+// AI Assistant Chat - Hauptfunktion für Nachrichten
+function handleAIAssistantChat() {
+    $input = json_decode(file_get_contents("php://input"), true);
+    $message = $input["message"] ?? "";
+    
+    if (empty($message)) {
+        http_response_code(400);
+        die(json_encode(["error" => "Message required"]));
+    }
+    
+    // Gemini API
+    $api_key = "AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A";
+    $model = "gemini-2.0-flash-exp";
+    
+    $systemPrompt = "Du bist der NOBA Admin Assistant. Hilf beim Lead-Management und beantworte Fragen zum Dashboard.";
+    $fullPrompt = $systemPrompt . "\n\nUser: " . $message;
+    
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$api_key";
+    
+    $data = [
+        "contents" => [["parts" => [["text" => $fullPrompt]]]],
+        "generationConfig" => ["temperature" => 0.7, "maxOutputTokens" => 1000]
+    ];
+    
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($http_code !== 200) {
+        echo json_encode(["success" => false, "message" => "Assistent nicht verfügbar"]);
+        return;
+    }
+    
+    $result = json_decode($response, true);
+    $ai_text = $result["candidates"][0]["content"]["parts"][0]["text"] ?? "";
+    
+    echo json_encode(["success" => true, "message" => $ai_text]);
+}
+
+// AI Assistant Suggestions - Vorschläge für Aktionen
+function handleAIAssistantSuggestions() {
+    $conversations = loadConversations();
+    
+    $suggestions = [
+        ["id" => 1, "text" => "Welche Leads benötigen Follow-up?", "icon" => "📞"],
+        ["id" => 2, "text" => "Zeige mir die Top 3 Leads", "icon" => "⭐"],
+        ["id" => 3, "text" => "Welche Leads sind am dringendsten?", "icon" => "🔥"],
+        ["id" => 4, "text" => "Analysiere Lead-Qualität", "icon" => "📊"]
+    ];
+    
+    echo json_encode(["success" => true, "suggestions" => $suggestions]);
+}
+
+// AI Assistant Analytics - Statistiken und Analysen
+function handleAIAssistantAnalytics() {
+    $conversations = loadConversations();
+    
+    $total = count($conversations);
+    $withEmail = count(array_filter($conversations, fn($c) => !empty($c["extracted_data"]["email"])));
+    $warmLeads = count(array_filter($conversations, fn($c) => ($c["lead_score"] ?? 0) >= 60));
+    
+    $analytics = [
+        "total_conversations" => $total,
+        "leads_with_contact" => $withEmail,
+        "warm_leads" => $warmLeads,
+        "conversion_rate" => $total > 0 ? round(($withEmail / $total) * 100, 1) : 0
+    ];
+    
+    echo json_encode(["success" => true, "analytics" => $analytics]);
+}
+
+// AI Assistant Context - Kontext für den Assistenten
+function handleAIAssistantContext() {
+    $conversations = loadConversations();
+    
+    $recentLeads = array_slice($conversations, 0, 5);
+    $context = [
+        "recent_count" => count($recentLeads),
+        "total_leads" => count($conversations),
+        "recent_leads" => array_map(function($conv) {
+            return [
+                "session_id" => $conv["session_id"] ?? "",
+                "score" => $conv["lead_score"] ?? 0,
+                "type" => $conv["extracted_data"]["lead_type"] ?? "unknown",
+                "timestamp" => $conv["timestamp"] ?? ""
+            ];
+        }, $recentLeads)
+    ];
+    
+    echo json_encode(["success" => true, "context" => $context]);
 }
 
 }
