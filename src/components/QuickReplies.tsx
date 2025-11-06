@@ -67,10 +67,11 @@ export const QuickReplies = ({ options, onSelect }: QuickRepliesProps) => {
         initial="hidden"
         animate="visible"
         exit="exit"
-        className="fixed bottom-24 left-0 right-0 z-[60] px-4 animate-fade-in"
+        className="fixed bottom-24 left-0 right-0 z-[60] animate-fade-in"
       >
-        <div className="mx-auto max-w-6xl">
-          <div className="flex flex-wrap justify-center gap-2">
+        <div className="mx-auto max-w-6xl px-4">
+          {/* Horizontal Scrollable Container */}
+          <div className="scrollbar-hide flex gap-2 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-1">
             {options.map((option, index) => {
               const Icon = getIconForOption(option);
               return (
@@ -82,9 +83,9 @@ export const QuickReplies = ({ options, onSelect }: QuickRepliesProps) => {
                   onClick={() => onSelect(option)}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="group relative overflow-hidden rounded-full glass-strong border border-neon-purple/20 px-4 py-2.5 shadow-glass-md backdrop-blur-xl transition-all duration-300 hover:scale-105 hover:border-neon-purple hover:shadow-neon-purple sm:px-5"
+                  className="group relative shrink-0 snap-start overflow-hidden rounded-full border border-neon-purple/10 bg-dark-card/60 px-4 py-2 shadow-md backdrop-blur-md transition-all duration-300 hover:border-neon-purple/40 hover:bg-dark-card/80 hover:shadow-neon-purple sm:px-5"
                 >
-                  <span className="relative z-10 flex items-center gap-2 text-sm font-medium text-gray-300 group-hover:text-neon-purple">
+                  <span className="relative z-10 flex items-center gap-2 text-sm font-medium text-gray-400 group-hover:text-neon-purple">
                     <Icon className="h-4 w-4 transition-transform group-hover:scale-110" />
                     <span className="whitespace-nowrap">{option}</span>
                   </span>
