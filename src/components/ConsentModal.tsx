@@ -45,11 +45,11 @@ export const ConsentModal = ({ isOpen, onAccept, onDecline }: ConsentModalProps)
           initial="hidden"
           animate="visible"
           exit="hidden"
-          className="fixed inset-0 z-50 bg-gradient-to-br from-slate-900/90 via-slate-800/90 to-slate-900/90 backdrop-blur-md"
+          className="fixed inset-0 z-[100] bg-gradient-to-br from-slate-900/90 via-slate-800/90 to-slate-900/90 backdrop-blur-md"
         />
 
         {/* Modal */}
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <motion.div
             variants={modalVariants}
             initial="hidden"
