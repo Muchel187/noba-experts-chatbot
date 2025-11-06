@@ -3539,6 +3539,81 @@ function handleAnalyzeProject() {
         'project' => $project,
         'message' => 'Projekt neu analysiert'
     ]);
+
+
+// AI Assistant f\u00fcr Admin Dashboard
+function handleAIAssistant() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $message = $input['message'] ?? '';
+    $context = $input['context'] ?? [];
+    
+    if (empty($message)) {
+        http_response_code(400);
+        die(json_encode(['error' => 'Message required']));
+    }
+    
+    // Gemini API f\u00fcr Assistant
+    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A';
+    $model = 'gemini-2.0-flash-exp';
+    
+    $systemPrompt = 'Du bist der NOBA Admin Assistant - ein hilfreicher KI-Assistent f\u00fcr das Admin Dashboard.
+    
+Deine Aufgaben:
+- Hilf beim Verwalten von Leads und Konversationen
+- Erkl\u00e4re Dashboard-Funktionen
+- Gib Tipps f\u00fcr effektives Lead-Management
+- Analysiere Lead-Daten und gib Empfehlungen
+- Unterst\u00fctze bei der Priorisierung von Leads
+
+Antworte immer auf Deutsch, sei professionell aber freundlich.';
+    
+    $fullPrompt = $systemPrompt . '\n\nUser: ' . $message;
+    
+    // Gemini API Call
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$api_key";
+    
+    $data = [
+        'contents' => [
+            [
+                'parts' => [
+                    ['text' => $fullPrompt]
+                ]
+            ]
+        ],
+        'generationConfig' => [
+            'temperature' => 0.7,
+            'maxOutputTokens' => 1000,
+        ]
+    ];
+    
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+    ]);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($http_code !== 200) {
+        error_log("Gemini API Error: HTTP $http_code - $response");
+        echo json_encode([
+            'success' => false,
+            'message' => 'Entschuldigung, ich bin gerade nicht verf\u00fcgbar. Bitte versuche es sp\u00e4ter erneut.',
+        ]);
+        return;
+    }
+    
+    $result = json_decode($response, true);
+    $ai_text = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
+    
+    echo json_encode([
+        'success' => true,
+        'message' => $ai_text,
+    ]);
 }
 
-?>
+}
