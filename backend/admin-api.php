@@ -22,7 +22,7 @@ $allowed_origins = [
 ];
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, $allowed_origins)) {
-    header("Access-Control-Allow-Origin: https://chatbot.noba-experts.de");
+    header("Access-Control-Allow-Origin: $origin");
     header("Access-Control-Allow-Credentials: true");
     header("Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS");
     header("Access-Control-Allow-Headers: Content-Type, Authorization");
@@ -155,14 +155,6 @@ switch ($action) {
 
     case 'delete_candidate':
         handleDeleteCandidate();
-    case 'match_candidates_to_vacancy':
-    error_log("✅ Matching-Funktion aufgerufen: vacancy_id = " . (file_get_contents("php://input")));
-        handleMatchCandidatesToVacancy();
-        break;
-
-    case 'match_vacancies_to_candidate':
-        handleMatchVacanciesToCandidate();
-        break;
         break;
 
     // ===== PROJEKT-ANALYSE =====
@@ -202,26 +194,6 @@ switch ($action) {
     case 'delete_match':
         handleDeleteMatch();
         break;
-
-
-    // ===== AI ASSISTANT =====
-    case "ai_assistant_chat":
-        handleAIAssistantChat();
-        break;
-    
-    case "ai_assistant_suggestions":
-        handleAIAssistantSuggestions();
-        break;
-    
-    case "ai_assistant_analytics":
-        handleAIAssistantAnalytics();
-        break;
-    
-    case "ai_assistant_context":
-        handleAIAssistantContext();
-        break;
-    
-    case "ai_assistant_analyze":
 
     default:
         http_response_code(404);
@@ -770,7 +742,7 @@ function translateTextToGerman($text) {
         return $text;
     }
 
-    $model = 'gemini-2.5-pro';
+    $model = 'gemini-2.5-flash-lite';
     $url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$api_key";
 
     $prompt = "Übersetze den folgenden Text ins Deutsche. Wenn der Text bereits auf Deutsch ist, gib ihn unverändert zurück. Gib NUR die Übersetzung zurück, ohne zusätzliche Erklärungen:\n\n$text";
@@ -866,19 +838,7 @@ function decodeJWT($token) {
 }
 
 function getBearerToken() {
-    // Polyfill for getallheaders if not available (e.g., nginx + php-fpm)
-    if (!function_exists('getallheaders')) {
-        $headers = [];
-        foreach ($_SERVER as $name => $value) {
-            if (substr($name, 0, 5) == 'HTTP_') {
-                $header = str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($name, 5)))));
-                $headers[$header] = $value;
-            }
-        }
-    } else {
-        $headers = getallheaders();
-    }
-    
+    $headers = getallheaders();
     $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
     if (preg_match('/Bearer\s+(.*)$/i', $auth, $matches)) {
         return $matches[1];
@@ -996,8 +956,8 @@ function exportToJSON($conversations) {
 
 // KI-Analyse mit Google Gemini
 function analyzeLeadWithAI($conversation) {
-    $api_key = 'AIzaSyB_SpDfRNqyIEB97flQ-v6dfr0eVByNuDQ'; // Aus chatbot-api.php
-    $model = 'gemini-2.5-pro';
+    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A'; // Aus chatbot-api.php
+    $model = 'gemini-2.0-flash-exp';
 
     $lead_data = $conversation['extracted_data'] ?? [];
     $messages = $conversation['messages'] ?? [];
@@ -2382,8 +2342,8 @@ function extractTextFromDOCX($filepath) {
  * DSGVO-konform: Entfernt Firmennamen, Kontaktdaten, spezifische Standorte
  */
 function anonymizeAndExtractVacancy($text) {
-    $api_key = 'AIzaSyB_SpDfRNqyIEB97flQ-v6dfr0eVByNuDQ';
-    $model = 'gemini-2.5-pro';
+    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A';
+    $model = 'gemini-2.0-flash-exp';
 
     $prompt = "Du bist ein DSGVO-Experte für IT-Recruiting. Analysiere diese Stellenbeschreibung und erstelle eine ANONYMISIERTE Version.
 
@@ -2480,8 +2440,8 @@ WICHTIG: Antworte NUR mit dem JSON-Objekt!";
  * DSGVO-konform: Entfernt Namen, Adressen, Kontaktdaten, spezifische Firmennamen
  */
 function anonymizeAndExtractCandidate($text) {
-    $api_key = 'AIzaSyB_SpDfRNqyIEB97flQ-v6dfr0eVByNuDQ';
-    $model = 'gemini-2.5-pro';
+    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A';
+    $model = 'gemini-2.0-flash-exp';
 
     $prompt = "Du bist ein DSGVO-Experte für IT-Recruiting. Analysiere diesen Lebenslauf und erstelle eine ANONYMISIERTE Version.
 
@@ -3027,10 +2987,6 @@ function handleSaveInterest() {
 }
 
 /**
- * Alle Matches abrufen (für Admin Dashboard)
- */
-
-/**
  * Neues Match erstellen (für Admin Dashboard)
  */
 function handleCreateMatch() {
@@ -3140,6 +3096,9 @@ function calculateMatchScore($candidate, $vacancy) {
     return min($score, 100); // Max 100%
 }
 
+/**
+ * Alle Matches abrufen (für Admin Dashboard)
+ */
 function handleGetMatches() {
     $matches = loadMatches();
     
@@ -3211,8 +3170,8 @@ function handleDeleteMatch() {
  * - Passende Kandidaten aus DB
  */
 function analyzeProjectWithAI($text, $project_name = '') {
-    $api_key = 'AIzaSyB_SpDfRNqyIEB97flQ-v6dfr0eVByNuDQ';
-    $model = 'gemini-2.5-pro';
+    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A';
+    $model = 'gemini-2.0-flash-exp';
     
     $prompt = "Du bist ein Experte für IT-Projektmanagement und Ressourcenplanung. Analysiere folgendes Projekt/Lastenheft und erstelle eine detaillierte Personalbedarfsanalyse.
 
@@ -3582,495 +3541,4 @@ function handleAnalyzeProject() {
     ]);
 }
 
-
-// ========================================
-// AI ASSISTANT HANDLERS
-// Intelligenter Admin-Assistent mit vollem Datenzugriff
-// ========================================
-
-/**
- * AI Assistant Chat - Intelligente Konversation
- */
-function handleAIAssistantChat() {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $message = $input['message'] ?? '';
-    $context = $input['context'] ?? [];
-    
-    if (!$message) {
-        http_response_code(400);
-        die(json_encode(['error' => 'Message required']));
-    }
-    
-    // Sammle alle relevanten Daten für den Kontext
-    $fullContext = buildUltimateSalesContext($context);
-    
-    // Sende an Gemini AI
-    $response = queryAIAssistant($message, $fullContext);
-    
-    echo json_encode([
-        'success' => true,
-        'message' => [
-            'id' => 'ai-' . uniqid(),
-            'role' => 'assistant',
-            'content' => $response['content'],
-            'timestamp' => date('c'),
-            'actions' => $response['actions'] ?? [],
-            'metadata' => $response['metadata'] ?? []
-        ]
-    ]);
-}
-
-/**
- * AI Assistant Suggestions - Proaktive Vorschläge
- */
-function handleAIAssistantSuggestions() {
-    $suggestions = generateAIAssistantSuggestions();
-    
-    echo json_encode([
-        'success' => true,
-        'suggestions' => $suggestions
-    ]);
-}
-
-/**
- * AI Assistant Analytics - Insights und Trends
- */
-function handleAIAssistantAnalytics() {
-    $analytics = generateAIAssistantAnalytics();
-    
-    echo json_encode([
-        'success' => true,
-        'analytics' => $analytics
-    ]);
-}
-
-/**
- * AI Assistant Context - Aktuelle Daten
- */
-function handleAIAssistantContext() {
-    $context = buildUltimateSalesContext();
-    
-    echo json_encode([
-        'success' => true,
-        'context' => $context
-    ]);
-}
-
-/**
- * AI Assistant Analyze - Analysiere spezifische Entity
- */
-function handleAIAssistantAnalyze() {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $entityType = $input['entity_type'] ?? '';
-    $entityId = $input['entity_id'] ?? '';
-    
-    if (!$entityType || !$entityId) {
-        http_response_code(400);
-        die(json_encode(['error' => 'entity_type and entity_id required']));
-    }
-    
-    $analysis = analyzeEntityWithAI($entityType, $entityId);
-    
-    echo json_encode([
-        'success' => true,
-        'analysis' => $analysis
-    ]);
-}
-
-// ===== AI ASSISTANT HELPER FUNCTIONS =====
-
-/**
- * Baue vollständigen Kontext für den AI-Assistenten
- */
-function buildUltimateSalesContext($additionalContext = []) {
-    $conversations = loadConversations();
-    $vacancies = loadVacancies();
-    $candidates = loadCandidates();
-    $projects = loadProjects();
-    $matches = loadMatches();
-    
-    // Berechne Statistiken
-    $hotLeads = count(array_filter($conversations, fn($c) => ($c['extracted_data']['lead_score'] ?? 0) >= 70));
-    $todayConversations = count(array_filter($conversations, fn($c) => 
-        strtotime($c['timestamp']) >= strtotime('today midnight')
-    ));
-    
-    $context = [
-        'conversationsCount' => count($conversations),
-        'vacanciesCount' => count($vacancies),
-        'candidatesCount' => count($candidates),
-        'projectsCount' => count($projects),
-        'matchesCount' => count($matches),
-        'hotLeads' => $hotLeads,
-        'todayConversations' => $todayConversations,
-        'recentActivities' => getRecentActivities(),
-        'pendingTasks' => getPendingTasks(),
-        'topCandidates' => array_slice($candidates, 0, 5),
-        'topVacancies' => array_slice($vacancies, 0, 5),
-        'activeProjects' => array_filter($projects, fn($p) => ($p['status'] ?? 'open') === 'open'),
-    ];
-    
-    return array_merge($context, $additionalContext);
-}
-
-/**
- * Frage Gemini AI mit vollem Kontext
- */
-function queryAIAssistant($userMessage, $context) {
-    $apiKey = 'AIzaSyB_SpDfRNqyIEB97flQ-v6dfr0eVByNuDQ';
-    $model = 'gemini-2.5-pro';
-    
-    // Baue System-Prompt mit allen Kontextdaten
-    $systemPrompt = buildUltimateSalesAIPrompt($context);
-    
-    $prompt = $systemPrompt . "\n\n**User-Anfrage:**\n" . $userMessage . "\n\n**Antwort:**";
-    
-    $url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey";
-    
-    $data = [
-        'contents' => [
-            [
-                'parts' => [
-                    ['text' => $prompt]
-                ]
-            ]
-        ],
-        'generationConfig' => [
-            'temperature' => 0.7,
-            'maxOutputTokens' => 2000,
-        ],
-    ];
-    
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
-    if ($http_code !== 200) {
-        error_log("Gemini API Error (Assistant): HTTP $http_code - $response");
-        return [
-            'content' => 'Entschuldigung, ich habe gerade technische Schwierigkeiten. Bitte versuche es in einem Moment erneut.',
-            'metadata' => ['error' => true]
-        ];
-    }
-    
-    $result = json_decode($response, true);
-    $aiText = $result['candidates'][0]['content']['parts'][0]['text'] ?? 'Keine Antwort erhalten.';
-    
-    // Extrahiere potenzielle Actions aus der Antwort
-    $actions = extractActionsFromAIResponse($aiText);
-    
-    return [
-        'content' => $aiText,
-        'actions' => $actions,
-        'metadata' => [
-            'confidence' => 0.9,
-            'model' => $model
-        ]
-    ];
-}
-
-/**
- * Baue System-Prompt für den AI-Assistenten
- */
-function buildUltimateSalesAIPrompt($context) {
-    $prompt = "Du bist der intelligente Admin-Assistent für NOBA Experts, ein führendes IT & Engineering Recruiting-Unternehmen.
-
-**DEINE ROLLE:**
-- Persönlicher digitaler Personalberater-Assistent für den Admin (Jurak)
-- Proaktiver Partner für maximale Recruiting-Effizienz
-- Vollständiger Zugriff auf alle Daten (Leads, Vakanzen, Kandidaten, Projekte, Matches)
-- Keine Einschränkungen - alles ist erlaubt, um Jurak zu helfen
-
-**AKTUELLER KONTEXT:**
-- Konversationen: {$context['conversationsCount']}
-- Hot Leads (Score ≥70): {$context['hotLeads']}
-- Heute neue Leads: {$context['todayConversations']}
-- Vakanzen: {$context['vacanciesCount']}
-- Kandidaten: {$context['candidatesCount']}
-- Projekte: {$context['projectsCount']}
-- Matches: {$context['matchesCount']}
-- Ausstehende Aufgaben: {$context['pendingTasks']}
-
-**DEINE FÄHIGKEITEN:**
-1. **Datenanalyse**: Erkenne Trends, Muster und Opportunities
-2. **Proaktive Empfehlungen**: Schlage passende Matches vor
-3. **Priorisierung**: Identifiziere wichtigste Follow-ups
-4. **Erinnerungen**: Weise auf zeitkritische Aufgaben hin
-5. **Insights**: Liefere handlungsrelevante Erkenntnisse
-6. **Optimierung**: Verbessere Recruiting-Prozesse
-
-**KOMMUNIKATIONSSTIL:**
-- Freundlich, professionell und präzise
-- Verwende deutsche Sprache
-- Sei direkt und handlungsorientiert
-- Nutze Emojis sparsam aber effektiv
-- Gib konkrete, umsetzbare Empfehlungen
-- Zeige Zahlen und Fakten
-
-**WICHTIG:**
-- Du hast VOLLEN Zugriff auf alle Daten
-- Nutze diesen Zugriff, um Jurak maximal zu unterstützen
-- Sei proaktiv und denke mit
-- Priorisiere nach Business Impact
-- Fokus auf Umsatzgenerierung und Effizienz";
-
-    return $prompt;
-}
-
-/**
- * Generiere proaktive Vorschläge
- */
-function generateAIAssistantSuggestions() {
-    $conversations = loadConversations();
-    $vacancies = loadVacancies();
-    $candidates = loadCandidates();
-    $suggestions = [];
-    
-    // Hot Leads ohne Follow-up
-    $hotLeads = array_filter($conversations, function($c) {
-        $score = $c['extracted_data']['lead_score'] ?? 0;
-        $lastContact = strtotime($c['timestamp']);
-        $daysSince = (time() - $lastContact) / (24 * 60 * 60);
-        return $score >= 70 && $daysSince >= 1;
-    });
-    
-    if (count($hotLeads) > 0) {
-        $suggestions[] = [
-            'id' => 'hot-leads-' . time(),
-            'type' => 'follow-up',
-            'title' => count($hotLeads) . ' Hot Leads benötigen Follow-up',
-            'description' => 'Diese hochqualifizierten Leads warten auf deine Kontaktaufnahme.',
-            'impact' => 'high',
-            'confidence' => 0.95,
-            'action' => 'Jetzt kontaktieren',
-            'relatedData' => ['leads' => array_slice($hotLeads, 0, 3)]
-        ];
-    }
-    
-    // Potenzielle Matches
-    $potentialMatches = findPotentialMatches($candidates, $vacancies);
-    if (count($potentialMatches) > 0) {
-        $suggestions[] = [
-            'id' => 'matches-' . time(),
-            'type' => 'match',
-            'title' => count($potentialMatches) . ' neue Match-Möglichkeiten entdeckt',
-            'description' => 'Kandidaten und Vakanzen mit hoher Übereinstimmung gefunden.',
-            'impact' => 'high',
-            'confidence' => 0.88,
-            'action' => 'Matches prüfen',
-            'relatedData' => ['matches' => array_slice($potentialMatches, 0, 5)]
-        ];
-    }
-    
-    // Veraltete Vakanzen
-    $oldVacancies = array_filter($vacancies, function($v) {
-        $created = strtotime($v['created_at'] ?? 'now');
-        $daysSince = (time() - $created) / (24 * 60 * 60);
-        return $daysSince >= 30 && ($v['status'] ?? 'active') === 'active';
-    });
-    
-    if (count($oldVacancies) > 0) {
-        $suggestions[] = [
-            'id' => 'old-vacancies-' . time(),
-            'type' => 'optimization',
-            'title' => count($oldVacancies) . ' Vakanzen sind über 30 Tage alt',
-            'description' => 'Diese Stellen sollten überprüft oder aktualisiert werden.',
-            'impact' => 'medium',
-            'confidence' => 0.85,
-            'action' => 'Vakanzen überprüfen',
-            'relatedData' => ['vacancies' => array_slice($oldVacancies, 0, 3)]
-        ];
-    }
-    
-    return $suggestions;
-}
-
-/**
- * Generiere Analytics und Insights
- */
-function generateAIAssistantAnalytics() {
-    $conversations = loadConversations();
-    $vacancies = loadVacancies();
-    $candidates = loadCandidates();
-    $matches = loadMatches();
-    
-    // Produktivität berechnen
-    $todayStart = strtotime('today midnight');
-    $weekStart = strtotime('monday this week midnight');
-    
-    $todayActions = count(array_filter($conversations, fn($c) => 
-        strtotime($c['timestamp']) >= $todayStart
-    ));
-    
-    $weekActions = count(array_filter($conversations, fn($c) => 
-        strtotime($c['timestamp']) >= $weekStart
-    ));
-    
-    $lastWeekActions = count(array_filter($conversations, fn($c) => 
-        strtotime($c['timestamp']) >= strtotime('monday last week midnight') &&
-        strtotime($c['timestamp']) < $weekStart
-    ));
-    
-    $weeklyTrend = $lastWeekActions > 0 
-        ? round((($weekActions - $lastWeekActions) / $lastWeekActions) * 100, 1)
-        : 0;
-    
-    // Pipeline-Metriken
-    $hotLeads = count(array_filter($conversations, fn($c) => 
-        ($c['extracted_data']['lead_score'] ?? 0) >= 70
-    ));
-    
-    $openVacancies = count(array_filter($vacancies, fn($v) => 
-        ($v['status'] ?? 'active') === 'active'
-    ));
-    
-    $activeMatches = count(array_filter($matches, fn($m) => 
-        ($m['status'] ?? 'pending') === 'pending'
-    ));
-    
-    return [
-        'productivity' => [
-            'todayActions' => $todayActions,
-            'weeklyTrend' => $weeklyTrend,
-            'completionRate' => 85, // Placeholder - könnte aus tatsächlichen Task-Daten kommen
-        ],
-        'pipeline' => [
-            'hotLeads' => $hotLeads,
-            'openVacancies' => $openVacancies,
-            'activeMatches' => $activeMatches,
-            'avgResponseTime' => 24, // Placeholder - könnte berechnet werden
-        ],
-        'recommendations' => generateAIAssistantSuggestions(),
-    ];
-}
-
-/**
- * Finde potenzielle Matches zwischen Kandidaten und Vakanzen
- */
-function findPotentialMatches($candidates, $vacancies) {
-    $matches = [];
-    
-    foreach ($vacancies as $vacancy) {
-        if (($vacancy['status'] ?? 'active') !== 'active') continue;
-        
-        foreach ($candidates as $candidate) {
-            if (($candidate['status'] ?? 'available') !== 'available') continue;
-            
-            $score = calculateMatchScore($candidate, $vacancy);
-            
-            if ($score >= 60) { // Mindestens 60% Match
-                $matches[] = [
-                    'vacancy' => $vacancy,
-                    'candidate' => $candidate,
-                    'score' => $score,
-                ];
-            }
-        }
-    }
-    
-    // Sortiere nach Score
-    usort($matches, fn($a, $b) => $b['score'] <=> $a['score']);
-    
-    return $matches;
-}
-
-/**
- * Hole letzte Aktivitäten
- */
-function getRecentActivities() {
-    // Placeholder - könnte aus einem Activity-Log kommen
-    return [
-        'Neue Konversation: Senior Developer',
-        'Vakanz erstellt: Full-Stack Position',
-        'Match erstellt: Kandidat → Job',
-    ];
-}
-
-/**
- * Hole ausstehende Aufgaben
- */
-function getPendingTasks() {
-    $conversations = loadConversations();
-    
-    // Zähle Leads die Follow-up benötigen
-    $needFollowUp = count(array_filter($conversations, function($c) {
-        $score = $c['extracted_data']['lead_score'] ?? 0;
-        $lastContact = strtotime($c['timestamp']);
-        $daysSince = (time() - $lastContact) / (24 * 60 * 60);
-        return $score >= 40 && $daysSince >= 2;
-    }));
-    
-    return $needFollowUp;
-}
-
-/**
- * Extrahiere Action-Items aus AI-Antwort
- */
-function extractActionsFromAIResponse($text) {
-    // Einfache Heuristik - könnte verbessert werden
-    $actions = [];
-    
-    if (stripos($text, 'kontaktieren') !== false || stripos($text, 'follow-up') !== false) {
-        $actions[] = [
-            'id' => 'action-' . uniqid(),
-            'type' => 'reminder',
-            'title' => 'Follow-up durchführen',
-            'description' => 'Kontaktiere die empfohlenen Leads',
-            'priority' => 'high',
-            'completed' => false,
-        ];
-    }
-    
-    return $actions;
-}
-
-/**
- * Analysiere spezifische Entity mit AI
- */
-function analyzeEntityWithAI($entityType, $entityId) {
-    $entity = null;
-    
-    switch ($entityType) {
-        case 'conversation':
-            $conversations = loadConversations();
-            $entity = array_values(array_filter($conversations, fn($c) => $c['session_id'] === $entityId))[0] ?? null;
-            break;
-        case 'vacancy':
-            $vacancies = loadVacancies();
-            $entity = array_values(array_filter($vacancies, fn($v) => $v['id'] === $entityId))[0] ?? null;
-            break;
-        case 'candidate':
-            $candidates = loadCandidates();
-            $entity = array_values(array_filter($candidates, fn($c) => $c['id'] === $entityId))[0] ?? null;
-            break;
-        case 'project':
-            $projects = loadProjects();
-            $entity = array_values(array_filter($projects, fn($p) => $p['id'] === $entityId))[0] ?? null;
-            break;
-    }
-    
-    if (!$entity) {
-        return ['error' => 'Entity not found'];
-    }
-    
-    // Verwende die existierende AI-Analyse (z.B. analyzeLeadWithAI für Conversations)
-    if ($entityType === 'conversation') {
-        return analyzeLeadWithAI($entity);
-    }
-    
-    // Für andere Entities - generische Analyse
-    return [
-        'entity_type' => $entityType,
-        'entity_id' => $entityId,
-        'summary' => 'Analyse für ' . $entityType . ' mit ID ' . $entityId,
-        'recommendations' => ['Weitere Analyse empfohlen'],
-    ];
-}
 ?>
