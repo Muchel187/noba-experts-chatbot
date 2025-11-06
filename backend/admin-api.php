@@ -155,11 +155,11 @@ switch ($action) {
 
     case 'delete_candidate':
         handleDeleteCandidate();
-    case match_candidates_to_vacancy:
+    case 'match_candidates_to_vacancy':
         handleMatchCandidatesToVacancy();
         break;
 
-    case match_vacancies_to_candidate:
+    case 'match_vacancies_to_candidate':
         handleMatchVacanciesToCandidate();
         break;
         break;
@@ -845,7 +845,19 @@ function decodeJWT($token) {
 }
 
 function getBearerToken() {
-    $headers = getallheaders();
+    // Polyfill for getallheaders if not available (e.g., nginx + php-fpm)
+    if (!function_exists('getallheaders')) {
+        $headers = [];
+        foreach ($_SERVER as $name => $value) {
+            if (substr($name, 0, 5) == 'HTTP_') {
+                $header = str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($name, 5)))));
+                $headers[$header] = $value;
+            }
+        }
+    } else {
+        $headers = getallheaders();
+    }
+    
     $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
     if (preg_match('/Bearer\s+(.*)$/i', $auth, $matches)) {
         return $matches[1];
