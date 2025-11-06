@@ -97,27 +97,41 @@ export const ChatMessageList = ({
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ delay: index * 0.05 + 0.1 }}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-noba-500 to-noba-600 shadow-lg"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple via-neon-purple to-neon-orange shadow-neon-purple ring-2 ring-neon-purple/30"
                   >
-                    <Bot className="h-5 w-5 text-white" strokeWidth={2.5} />
+                    <svg className="h-5 w-5 text-dark-primary" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2L2 7L12 12L22 7L12 2Z" />
+                      <path d="M2 17L12 22L22 17" />
+                      <path d="M2 12L12 17L22 12" />
+                    </svg>
                   </motion.div>
                 )}
 
                 {/* Message Bubble */}
                 <div
                   className={clsx(
-                    'group relative max-w-[85%] rounded-2xl px-5 py-3.5 text-sm transition-all',
-                    isSystem && 'glass w-full max-w-full border-emerald-200/60 bg-emerald-50/80 text-emerald-900',
-                    isUser && 'rounded-br-sm bg-gradient-to-br from-noba-500 to-noba-600 text-white shadow-lg shadow-noba-500/25',
-                    isBot && 'glass rounded-bl-sm bg-white/80 text-slate-900 shadow-3d hover:shadow-3d-lg',
+                    'group relative max-w-[85%] rounded-2xl px-5 py-3.5 text-sm transition-all sm:max-w-md md:max-w-lg lg:max-w-2xl',
+                    isSystem && 'glass-strong w-full max-w-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+                    isUser && 'rounded-br-md border border-neon-orange/30 bg-gradient-to-br from-neon-orange to-neon-orange-bright text-white shadow-neon-orange',
+                    isBot && 'glass-strong rounded-bl-md border border-neon-purple/20 text-gray-100 shadow-glass-lg backdrop-blur-xl',
                   )}
                 >
+                  {/* Hover Glow for User Messages */}
+                  {isUser && (
+                    <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-neon-orange to-neon-purple opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-30"></div>
+                  )}
+                  
+                  {/* Neon Border Glow for Bot Messages */}
+                  {isBot && (
+                    <div className="absolute -inset-[1px] rounded-2xl bg-gradient-to-r from-neon-purple/0 via-neon-purple/20 to-neon-purple/0 opacity-0 transition-opacity duration-500 group-hover:opacity-100"></div>
+                  )}
+                  
                   {/* Message Content */}
                   {isUser || isSystem ? (
-                    <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
+                    <p className="relative z-10 whitespace-pre-wrap text-[15px] leading-relaxed">{message.text}</p>
                   ) : (
                     <div
-                      className="prose prose-sm max-w-none whitespace-pre-wrap leading-relaxed prose-strong:text-slate-900"
+                      className="prose prose-sm prose-invert relative z-10 max-w-none whitespace-pre-wrap text-[15px] leading-relaxed"
                       dangerouslySetInnerHTML={{ __html: formatMessageText(message.text) }}
                     />
                   )}
@@ -125,13 +139,13 @@ export const ChatMessageList = ({
                   {/* Timestamp & Metadata */}
                   <div
                     className={clsx(
-                      'mt-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider',
-                      isUser ? 'text-white/70' : 'text-slate-400',
+                      'relative z-10 mt-2 flex items-center gap-2 text-xs',
+                      isUser ? 'text-white/60' : 'text-gray-500',
                     )}
                   >
                     <span>{formatTime(message.timestamp)}</span>
                     {message.metadata?.leadQualified && (
-                      <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-emerald-600">
+                      <span className="rounded-full bg-neon-purple/20 px-2 py-0.5 text-neon-purple">
                         Lead
                       </span>
                     )}
@@ -142,19 +156,25 @@ export const ChatMessageList = ({
                     <motion.button
                       type="button"
                       aria-label="Nachricht vorlesen"
-                      whileHover={{ scale: 1.1 }}
+                      whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() =>
                         speakingMessageId === message.id
                           ? onStopSpeaking?.()
                           : onSpeak?.(message.id, message.text)
                       }
-                      className="absolute -right-12 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-lg transition-all hover:border-noba-500 hover:text-noba-500 focus-visible:flex group-hover:flex"
+                      className="relative z-10 mt-3 flex items-center gap-2 rounded-lg border border-neon-purple/30 bg-dark-card px-3 py-1.5 text-xs font-medium text-gray-300 backdrop-blur-xl transition-all hover:border-neon-purple hover:bg-dark-card-strong hover:text-white hover:shadow-neon-purple"
                     >
                       {speakingMessageId === message.id ? (
-                        <Pause className="h-4 w-4" />
+                        <>
+                          <Pause className="h-4 w-4" />
+                          <span>Pause</span>
+                        </>
                       ) : (
-                        <Volume2 className="h-4 w-4" />
+                        <>
+                          <Volume2 className="h-4 w-4" />
+                          <span>Vorlesen</span>
+                        </>
                       )}
                     </motion.button>
                   )}
@@ -195,29 +215,18 @@ export const ChatMessageList = ({
               exit="exit"
               className="flex items-center gap-3"
             >
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-noba-500 to-noba-600 shadow-lg">
-                <Bot className="h-5 w-5 text-white" strokeWidth={2.5} />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple via-neon-purple to-neon-orange shadow-neon-purple ring-2 ring-neon-purple/30">
+                <svg className="h-5 w-5 text-dark-primary" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2L2 7L12 12L22 7L12 2Z" />
+                  <path d="M2 17L12 22L22 17" />
+                  <path d="M2 12L12 17L22 12" />
+                </svg>
               </div>
-              <div className="glass rounded-2xl rounded-bl-sm bg-white/80 px-5 py-4 shadow-3d">
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1">
-                    <motion.span
-                      animate={{ scale: [1, 1.3, 1] }}
-                      transition={{ duration: 1, repeat: Infinity, delay: 0 }}
-                      className="h-2 w-2 rounded-full bg-noba-500"
-                    />
-                    <motion.span
-                      animate={{ scale: [1, 1.3, 1] }}
-                      transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
-                      className="h-2 w-2 rounded-full bg-noba-500"
-                    />
-                    <motion.span
-                      animate={{ scale: [1, 1.3, 1] }}
-                      transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
-                      className="h-2 w-2 rounded-full bg-noba-500"
-                    />
-                  </div>
-                  <span className="text-sm font-medium text-slate-600">Der KI-Assistent schreibt</span>
+              <div className="glass-strong rounded-2xl rounded-bl-md border border-neon-purple/20 px-6 py-4 shadow-glass-md backdrop-blur-xl">
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-gradient-to-r from-neon-purple to-neon-purple shadow-neon-purple [animation-delay:-0.3s]"></div>
+                  <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-gradient-to-r from-neon-purple to-neon-orange shadow-neon-purple [animation-delay:-0.15s]"></div>
+                  <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-gradient-to-r from-neon-orange to-neon-purple shadow-neon-orange"></div>
                 </div>
               </div>
             </motion.div>

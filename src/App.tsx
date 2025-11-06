@@ -1018,33 +1018,59 @@ OK, verstanden. Die Stellenbeschreibung ist nun im Kontext gespeichert.`;
         meetingUrl={APP_CONFIG.notifications.meetingUrl}
       />
 
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{APP_CONFIG.branding.company}</p>
-            <h1 className="text-xl font-semibold text-slate-900">{APP_CONFIG.branding.name}</h1>
-          </div>
+      <header className="fixed left-0 right-0 top-0 z-50 px-2 pt-2 sm:px-4 sm:pt-4">
+        <div className="mx-auto max-w-6xl">
+          <div className="glass-strong rounded-xl border border-neon-purple/20 px-4 py-3 shadow-glass-lg sm:rounded-2xl sm:px-6 sm:py-4 transition-all hover:border-neon-purple/40 hover:shadow-neon-purple">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-neon-purple to-neon-purple opacity-40 blur-xl animate-pulse-slow"></div>
+                  <div className="relative flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-neon-purple via-neon-purple to-neon-orange shadow-neon-purple">
+                    <span className="text-xl font-bold text-dark-primary">AI</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-neon-purple/80">
+                    {APP_CONFIG.branding.company}
+                  </p>
+                  <h1 className="bg-gradient-to-r from-white via-neon-purple-bright to-white bg-clip-text text-lg font-bold text-transparent">
+                    {APP_CONFIG.branding.name}
+                  </h1>
+                </div>
+              </div>
 
-          <div className="flex items-center gap-3">
-            <span
-              className={`flex h-2.5 w-2.5 items-center justify-center rounded-full ${
-                isOffline ? 'bg-red-500' : 'bg-emerald-500'
-              }`}
-            />
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:border-noba-orange hover:text-noba-orange"
-            >
-              Menü
-            </button>
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    {!isOffline && (
+                      <span className="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-neon-purple opacity-75"></span>
+                    )}
+                    <span className={`relative inline-flex h-3 w-3 rounded-full ring-2 ring-dark-tertiary ${
+                      isOffline ? 'bg-red-500' : 'bg-neon-purple shadow-neon-purple'
+                    }`}></span>
+                  </div>
+                  <span className="hidden text-xs font-medium text-gray-400 sm:inline">
+                    {isOffline ? 'Offline' : 'Online'}
+                  </span>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="group relative overflow-hidden rounded-xl border border-neon-purple/30 bg-dark-card px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white shadow-lg backdrop-blur-xl transition-all duration-300 hover:border-neon-purple hover:shadow-neon-purple sm:px-5 sm:py-2.5"
+                >
+                  <span className="relative z-10">Menü</span>
+                  <div className="absolute inset-0 -z-0 bg-gradient-to-r from-neon-purple/20 to-neon-purple/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </header>
 
       <StatusBanner status={status as 'offline' | 'typing' | 'idle'} />
 
-      <main className="flex-1">
+      <main className="flex-1 px-4 pb-32 pt-24 sm:pt-28">
         <ChatMessageList
           messages={chatMessages}
           onSpeak={handleSpeak}

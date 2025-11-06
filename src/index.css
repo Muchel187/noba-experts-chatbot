@@ -3,13 +3,43 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
 
-  /* Custom Properties für Glassmorphism */
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.18);
-  --blur-strength: 12px;
+  /* Dark Theme Colors */
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #0f1419;
+  --bg-tertiary: #1a1f2e;
+  
+  /* Dark Glassmorphism */
+  --glass-bg: rgba(15, 23, 42, 0.4);
+  --glass-bg-strong: rgba(15, 23, 42, 0.7);
+  --glass-border: rgba(139, 92, 246, 0.2);
+  --glass-border-hover: rgba(139, 92, 246, 0.5);
+  --blur-strength: 20px;
+  
+  /* Neon Colors */
+  --neon-purple-dark: #6B21A8;
+  --neon-purple: #8B5CF6;
+  --neon-purple-bright: #A78BFA;
+  --neon-orange: #FF7B29;
+  
+  /* Dark Gradient Mesh */
+  --gradient-mesh: 
+    radial-gradient(at 27% 37%, hsla(270, 80%, 50%, 0.08) 0px, transparent 50%),
+    radial-gradient(at 97% 21%, hsla(280, 70%, 60%, 0.06) 0px, transparent 50%),
+    radial-gradient(at 52% 99%, hsla(25, 100%, 58%, 0.08) 0px, transparent 50%),
+    radial-gradient(at 10% 80%, hsla(260, 60%, 50%, 0.05) 0px, transparent 50%);
+  
+  /* Dark Shadows */
+  --shadow-glass-sm: 0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(139, 92, 246, 0.1);
+  --shadow-glass-md: 0 4px 16px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(139, 92, 246, 0.15);
+  --shadow-glass-lg: 0 8px 32px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(139, 92, 246, 0.2);
+  
+  /* Neon Glows */
+  --shadow-glow-purple-dark: 0 0 20px rgba(107, 33, 168, 0.6), 0 0 40px rgba(107, 33, 168, 0.4);
+  --shadow-glow-purple: 0 0 20px rgba(139, 92, 246, 0.5), 0 0 40px rgba(139, 92, 246, 0.3);
+  --shadow-glow-orange: 0 0 20px rgba(255, 123, 41, 0.5), 0 0 40px rgba(255, 123, 41, 0.3);
 }
 
 @supports (font-variation-settings: normal) {
@@ -19,24 +49,72 @@
 }
 
 body {
-  @apply bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 antialiased;
+  background: linear-gradient(135deg, #0a0e1a 0%, #0f1419 50%, #1a1f2e 100%);
+  color: #e2e8f0;
   background-attachment: fixed;
+  position: relative;
+  min-height: 100vh;
+  @apply antialiased;
 }
 
-/* Glassmorphism Utilities */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: var(--gradient-mesh);
+  opacity: 0.6;
+  z-index: 0;
+  pointer-events: none;
+  animation: pulse-slow 8s ease-in-out infinite;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: 
+    radial-gradient(circle at 20% 50%, rgba(107, 33, 168, 0.04) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.04) 0%, transparent 50%);
+  z-index: 0;
+  pointer-events: none;
+  animation: float 20s ease-in-out infinite;
+}
+
+/* Dark Glassmorphism Utilities */
 @layer utilities {
   .glass {
     background: var(--glass-bg);
-    backdrop-filter: blur(var(--blur-strength));
-    -webkit-backdrop-filter: blur(var(--blur-strength));
+    backdrop-filter: blur(var(--blur-strength)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--blur-strength)) saturate(180%);
     border: 1px solid var(--glass-border);
   }
 
-  .glass-dark {
-    background: rgba(15, 23, 42, 0.7);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+  .glass-strong {
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(var(--blur-strength)) saturate(200%);
+    -webkit-backdrop-filter: blur(var(--blur-strength)) saturate(200%);
+    border: 1px solid var(--glass-border);
+  }
+  
+  .glass-hover:hover {
+    border-color: var(--glass-border-hover);
+    box-shadow: var(--shadow-glow-purple);
+  }
+  
+  .shadow-glass-sm {
+    box-shadow: var(--shadow-glass-sm);
+  }
+  
+  .shadow-glass-md {
+    box-shadow: var(--shadow-glass-md);
+  }
+  
+  .shadow-glass-lg {
+    box-shadow: var(--shadow-glass-lg);
+  }
+  
+  .bg-gradient-mesh {
+    background-image: var(--gradient-mesh);
   }
 
   .text-balance {
@@ -50,6 +128,28 @@ body {
 
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+  
+  .transition-spring {
+    transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  
+  .transition-bounce-gentle {
+    transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+  
+  .hover-lift {
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-2px);
+  }
+  
+  .gradient-animate {
+    background-size: 200% 200%;
+    animation: gradient-flow 3s ease infinite;
   }
 }
 
@@ -68,7 +168,18 @@ html {
 
 /* Selection Styling */
 ::selection {
-  @apply bg-noba-orange/20 text-noba-900;
+  background: rgba(139, 92, 246, 0.3);
+  color: #ffffff;
+}
+
+/* Neon Text Glow */
+.neon-text {
+  text-shadow: 0 0 10px var(--neon-purple), 0 0 20px var(--neon-purple);
+}
+
+.neon-border {
+  border: 1px solid var(--neon-purple);
+  box-shadow: 0 0 10px var(--neon-purple), inset 0 0 10px rgba(139, 92, 246, 0.1);
 }
 
 /* Custom Scrollbar */

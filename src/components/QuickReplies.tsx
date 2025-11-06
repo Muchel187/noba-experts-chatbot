@@ -67,31 +67,28 @@ export const QuickReplies = ({ options, onSelect }: QuickRepliesProps) => {
         initial="hidden"
         animate="visible"
         exit="exit"
-        className="glass border-t border-slate-200/60 bg-gradient-to-r from-white/50 via-white/70 to-white/50 px-4 py-3 backdrop-blur-xl"
+        className="fixed bottom-24 left-0 right-0 z-[60] px-4 animate-fade-in"
       >
-        <div className="mx-auto w-full max-w-3xl">
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500"
-          >
-            Schnellantworten
-          </motion.p>
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide snap-x snap-mandatory">
-            {options.map((option) => {
+        <div className="mx-auto max-w-4xl">
+          <div className="flex flex-wrap justify-center gap-2">
+            {options.map((option, index) => {
               const Icon = getIconForOption(option);
               return (
                 <motion.button
                   key={option}
                   variants={itemVariants}
+                  style={{ animationDelay: `${index * 50}ms` }}
                   type="button"
                   onClick={() => onSelect(option)}
-                  whileHover={{ scale: 1.05, y: -2 }}
+                  whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="glass group flex shrink-0 snap-start items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2.5 text-sm font-medium text-slate-700 shadow-lg transition-all hover:border-noba-500 hover:bg-noba-50 hover:text-noba-700 hover:shadow-glow-orange"
+                  className="group relative overflow-hidden rounded-full glass-strong border border-neon-purple/20 px-4 py-2.5 shadow-glass-md backdrop-blur-xl transition-all duration-300 hover:scale-105 hover:border-neon-purple hover:shadow-neon-purple sm:px-5"
                 >
-                  <Icon className="h-4 w-4 transition-transform group-hover:scale-110" />
-                  <span className="whitespace-nowrap">{option}</span>
+                  <span className="relative z-10 flex items-center gap-2 text-sm font-medium text-gray-300 group-hover:text-neon-purple">
+                    <Icon className="h-4 w-4 transition-transform group-hover:scale-110" />
+                    <span className="whitespace-nowrap">{option}</span>
+                  </span>
+                  <div className="absolute inset-0 -z-0 bg-gradient-to-r from-neon-purple/10 to-neon-purple/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
                 </motion.button>
               );
             })}
