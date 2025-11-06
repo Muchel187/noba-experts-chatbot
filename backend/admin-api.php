@@ -770,7 +770,7 @@ function translateTextToGerman($text) {
         return $text;
     }
 
-    $model = 'gemini-2.5-flash-lite';
+    $model = 'gemini-2.5-pro';
     $url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$api_key";
 
     $prompt = "Übersetze den folgenden Text ins Deutsche. Wenn der Text bereits auf Deutsch ist, gib ihn unverändert zurück. Gib NUR die Übersetzung zurück, ohne zusätzliche Erklärungen:\n\n$text";
@@ -996,8 +996,8 @@ function exportToJSON($conversations) {
 
 // KI-Analyse mit Google Gemini
 function analyzeLeadWithAI($conversation) {
-    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A'; // Aus chatbot-api.php
-    $model = 'gemini-2.0-flash-exp';
+    $api_key = 'AIzaSyB_SpDfRNqyIEB97flQ-v6dfr0eVByNuDQ'; // Aus chatbot-api.php
+    $model = 'gemini-2.5-pro';
 
     $lead_data = $conversation['extracted_data'] ?? [];
     $messages = $conversation['messages'] ?? [];
@@ -2382,8 +2382,8 @@ function extractTextFromDOCX($filepath) {
  * DSGVO-konform: Entfernt Firmennamen, Kontaktdaten, spezifische Standorte
  */
 function anonymizeAndExtractVacancy($text) {
-    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A';
-    $model = 'gemini-2.0-flash-exp';
+    $api_key = 'AIzaSyB_SpDfRNqyIEB97flQ-v6dfr0eVByNuDQ';
+    $model = 'gemini-2.5-pro';
 
     $prompt = "Du bist ein DSGVO-Experte für IT-Recruiting. Analysiere diese Stellenbeschreibung und erstelle eine ANONYMISIERTE Version.
 
@@ -2480,8 +2480,8 @@ WICHTIG: Antworte NUR mit dem JSON-Objekt!";
  * DSGVO-konform: Entfernt Namen, Adressen, Kontaktdaten, spezifische Firmennamen
  */
 function anonymizeAndExtractCandidate($text) {
-    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A';
-    $model = 'gemini-2.0-flash-exp';
+    $api_key = 'AIzaSyB_SpDfRNqyIEB97flQ-v6dfr0eVByNuDQ';
+    $model = 'gemini-2.5-pro';
 
     $prompt = "Du bist ein DSGVO-Experte für IT-Recruiting. Analysiere diesen Lebenslauf und erstelle eine ANONYMISIERTE Version.
 
@@ -3211,8 +3211,8 @@ function handleDeleteMatch() {
  * - Passende Kandidaten aus DB
  */
 function analyzeProjectWithAI($text, $project_name = '') {
-    $api_key = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A';
-    $model = 'gemini-2.0-flash-exp';
+    $api_key = 'AIzaSyB_SpDfRNqyIEB97flQ-v6dfr0eVByNuDQ';
+    $model = 'gemini-2.5-pro';
     
     $prompt = "Du bist ein Experte für IT-Projektmanagement und Ressourcenplanung. Analysiere folgendes Projekt/Lastenheft und erstelle eine detaillierte Personalbedarfsanalyse.
 
@@ -3602,7 +3602,7 @@ function handleAIAssistantChat() {
     }
     
     // Sammle alle relevanten Daten für den Kontext
-    $fullContext = buildAssistantContext($context);
+    $fullContext = buildUltimateSalesContext($context);
     
     // Sende an Gemini AI
     $response = queryAIAssistant($message, $fullContext);
@@ -3648,7 +3648,7 @@ function handleAIAssistantAnalytics() {
  * AI Assistant Context - Aktuelle Daten
  */
 function handleAIAssistantContext() {
-    $context = buildAssistantContext();
+    $context = buildUltimateSalesContext();
     
     echo json_encode([
         'success' => true,
@@ -3682,7 +3682,7 @@ function handleAIAssistantAnalyze() {
 /**
  * Baue vollständigen Kontext für den AI-Assistenten
  */
-function buildAssistantContext($additionalContext = []) {
+function buildUltimateSalesContext($additionalContext = []) {
     $conversations = loadConversations();
     $vacancies = loadVacancies();
     $candidates = loadCandidates();
@@ -3717,11 +3717,11 @@ function buildAssistantContext($additionalContext = []) {
  * Frage Gemini AI mit vollem Kontext
  */
 function queryAIAssistant($userMessage, $context) {
-    $apiKey = 'AIzaSyBtwnfTYAJgtJDSU7Lp5C8s5Dnw6PUYP2A';
-    $model = 'gemini-2.0-flash-exp';
+    $apiKey = 'AIzaSyB_SpDfRNqyIEB97flQ-v6dfr0eVByNuDQ';
+    $model = 'gemini-2.5-pro';
     
     // Baue System-Prompt mit allen Kontextdaten
-    $systemPrompt = buildAIAssistantSystemPrompt($context);
+    $systemPrompt = buildUltimateSalesAIPrompt($context);
     
     $prompt = $systemPrompt . "\n\n**User-Anfrage:**\n" . $userMessage . "\n\n**Antwort:**";
     
@@ -3779,7 +3779,7 @@ function queryAIAssistant($userMessage, $context) {
 /**
  * Baue System-Prompt für den AI-Assistenten
  */
-function buildAIAssistantSystemPrompt($context) {
+function buildUltimateSalesAIPrompt($context) {
     $prompt = "Du bist der intelligente Admin-Assistent für NOBA Experts, ein führendes IT & Engineering Recruiting-Unternehmen.
 
 **DEINE ROLLE:**
